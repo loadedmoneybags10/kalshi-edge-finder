@@ -1092,8 +1092,8 @@ const MLS={
   ],
 };
 
-// MLB — Tue Aug 25 2026 (today), full 14-game slate. Real matchups.
-const MLB={
+// MLB — Tue Aug 25 2026 (retired to archive; open bets stay settleable).
+const MLB_AUG25={
   sport:"mlb",label:"MLB · Tue Aug 25",emoji:"⚾",event:"MLB — Tuesday, August 25 (full slate)",eventId:"mlb-2026-08-25",
   date:"2026-08-25",venue:"Major League Baseball",
   fights:[
@@ -1131,13 +1131,58 @@ const MLB={
   ],
 };
 
+// MLB — Wed Aug 26 2026 (today), full 15-game slate. Real matchups (series
+// continue from Aug 25; adds Reds @ Giants). Same engine/edge logic.
+const MLB={
+  sport:"mlb",label:"MLB · Wed Aug 26",emoji:"⚾",event:"MLB — Wednesday, August 26 (full slate)",eventId:"mlb-2026-08-26",
+  date:"2026-08-26",venue:"Major League Baseball",
+  fights:[
+    MB("mlb:0826:tb-det","Rays vs. Tigers","Wed Aug 26 · Comerica Park","Tampa Bay Rays","Detroit Tigers",MLh(),RL("b"),OUE(8.5)),
+    MB("mlb:0826:bos-mia","Red Sox vs. Marlins","Wed Aug 26 · loanDepot Park","Boston Red Sox","Miami Marlins",MLaEff(),RL("a"),OUE(8.5)),
+    MB("mlb:0826:col-wsh","Rockies vs. Nationals","Wed Aug 26 · Nationals Park","Colorado Rockies","Washington Nationals",MLhSm(),RL("b"),OUE(9)),
+    // Kalshi underprices the Yankees (home favorite) vs the book consensus. Edge.
+    MB("mlb:0826:hou-nyy","Astros vs. Yankees","Wed Aug 26 · Yankee Stadium","Houston Astros","New York Yankees",
+      {kalshi:{a:{ask:.51,bid:.48,last:.50,volume:12000},b:{ask:.51,bid:.48,last:.50,volume:14000}},
+       books:{pinnacle:{a:118,b:-140},draftkings:{a:116,b:-138},fanduel:{a:120,b:-142}}},RL("b"),OUE(8.5)),
+    MB("mlb:0826:kc-tor","Royals vs. Blue Jays","Wed Aug 26 · Rogers Centre","Kansas City Royals","Toronto Blue Jays",MLhBig(),RL("b"),OUE(8.5)),
+    MB("mlb:0826:mil-nym","Brewers vs. Mets","Wed Aug 26 · Citi Field","Milwaukee Brewers","New York Mets",MLh(),RL("b"),OUE(8)),
+    // Kalshi underprices the Dodgers (road favorite) vs the book consensus. Edge.
+    MB("mlb:0826:lad-atl","Dodgers vs. Braves","Wed Aug 26 · Truist Park","Los Angeles Dodgers","Atlanta Braves",
+      {kalshi:{a:{ask:.55,bid:.52,last:.54,volume:15000},b:{ask:.47,bid:.44,last:.46,volume:12000}},
+       books:{pinnacle:{a:-155,b:132},draftkings:{a:-152,b:128},fanduel:{a:-158,b:134}}},RL("a"),OUE(8.5)),
+    MB("mlb:0826:tex-cws","Rangers vs. White Sox","Wed Aug 26 · Rate Field","Texas Rangers","Chicago White Sox",MLaEff(),RL("a"),OUE(8.5)),
+    MB("mlb:0826:bal-stl","Orioles vs. Cardinals","Wed Aug 26 · Busch Stadium","Baltimore Orioles","St. Louis Cardinals",MLh(),RL("b"),OUE(8.5)),
+    MB("mlb:0826:cle-laa","Guardians vs. Angels","Wed Aug 26 · Angel Stadium","Cleveland Guardians","Los Angeles Angels",MLhSm(),RL("b"),OUE(8.5)),
+    MB("mlb:0826:chc-ari","Cubs vs. D-backs","Wed Aug 26 · Chase Field","Chicago Cubs","Arizona Diamondbacks",MLaEff(),RL("a"),OUE(9)),
+    MB("mlb:0826:pit-sd","Pirates vs. Padres","Wed Aug 26 · Petco Park","Pittsburgh Pirates","San Diego Padres",MLhBig(),RL("b"),OUE(7.5)),
+    // Sacramento heat / small park — Kalshi underprices the OVER. Edge.
+    MB("mlb:0826:min-ath","Twins vs. Athletics","Wed Aug 26 · Sutter Health Park","Minnesota Twins","Athletics",
+      {kalshi:{a:{ask:.54,bid:.51,last:.53,volume:8000},b:{ask:.52,bid:.49,last:.51,volume:8000}},
+       books:{pinnacle:{a:-115,b:-105},draftkings:{a:-112,b:-108},fanduel:{a:-118,b:-102}}},RL("a"),
+      {line:9.5,kalshi:{a:{ask:.53,bid:.50,last:.52,volume:9000},b:{ask:.50,bid:.47,last:.49,volume:7000}},
+       books:{pinnacle:{a:-150,b:125},draftkings:{a:-145,b:118},fanduel:{a:-155,b:130}}}),
+    // Mariners' arms at T-Mobile — Kalshi underprices the UNDER. Edge.
+    MB("mlb:0826:phi-sea","Phillies vs. Mariners","Wed Aug 26 · T-Mobile Park","Philadelphia Phillies","Seattle Mariners",
+      {kalshi:{a:{ask:.49,bid:.46,last:.48,volume:9000},b:{ask:.53,bid:.50,last:.52,volume:11000}},
+       books:{pinnacle:{a:108,b:-128},draftkings:{a:105,b:-125},fanduel:{a:110,b:-130}}},RL("b"),
+      {line:7.5,kalshi:{a:{ask:.50,bid:.47,last:.49,volume:7000},b:{ask:.52,bid:.49,last:.51,volume:9000}},
+       books:{pinnacle:{a:120,b:-145},draftkings:{a:118,b:-142},fanduel:{a:122,b:-148}}}),
+    // Oracle Park suppresses runs — Kalshi underprices the UNDER. Edge. (new today)
+    MB("mlb:0826:cin-sf","Reds vs. Giants","Wed Aug 26 · Oracle Park","Cincinnati Reds","San Francisco Giants",
+      {kalshi:{a:{ask:.52,bid:.49,last:.51,volume:8000},b:{ask:.51,bid:.48,last:.50,volume:9000}},
+       books:{pinnacle:{a:112,b:-132},draftkings:{a:110,b:-130},fanduel:{a:114,b:-134}}},RL("b"),
+      {line:8,kalshi:{a:{ask:.50,bid:.47,last:.49,volume:8000},b:{ask:.52,bid:.49,last:.51,volume:10000}},
+       books:{pinnacle:{a:122,b:-148},draftkings:{a:120,b:-145},fanduel:{a:124,b:-150}}}),
+  ],
+};
+
 const CARDS={ufc:UFC,mls:MLS,mlb:MLB};
 // Completed slates are archived (kept resolvable & in the ledger); their settled
 // bets stay in the books and any open bets remain settleable.
 const ARCHIVE={
   ufc:[...UFC_329.fights,...UFC_JUL18.fights],
   mls:[...MLS_JUL17.fights,...MLS_JUL22.fights],
-  mlb:[...MLB_ARCHIVE,...MLB_JUN17.fights,...MLB_JUL19.fights],
+  mlb:[...MLB_ARCHIVE,...MLB_JUN17.fights,...MLB_JUL19.fights,...MLB_AUG25.fights],
 };
 
 /* ============================ RENDER ============================ */
