@@ -6,10 +6,26 @@ and reference-book odds, normalized into the shape the edge engine already score
 Runs in **mock mode** today (no keys, no network) so the pipeline is testable
 end-to-end. Flip to live by setting `USE_MOCK=0` and providing keys.
 
+## Scan model (the operating cadence)
+
+Defined in `lib/competitions.mjs`. One daily cron scans every enabled competition;
+what differs is how often each *has* games:
+
+| Cadence | Competitions | Behavior |
+|---------|--------------|----------|
+| `daily` | **MLB** (NBA later) | Games nearly every day — the driver. |
+| `matchday` | **MLS, EPL, La Liga, Serie A, Bundesliga, EFL Cup, FA Cup** | Poll runs daily as an **odds-checker**; most days no open markets → finds nothing; fires on match days. |
+| `event` | **UFC** | Scanned when a fight card is scheduled. |
+
+Notes: **FA Cup** is registered but its marquee rounds (Premier League clubs) are
+January+ — the daily check picks it up when live. The current midweek English cup
+is the **EFL (Carabao) Cup**. **NBA** is registered `enabled:false` until tip-off.
+
 ## What's here
 
 | File | Role |
 |------|------|
+| `lib/competitions.mjs` | Competition registry + scan cadence (odds-sport keys, sport bucket, enabled). |
 | `lib/providers.mjs` | Feed clients: The Odds API (books) + Kalshi Trade API v2. Mock + real paths. |
 | `lib/normalize.mjs` | Pure transform: raw payloads → engine fixture/market shape (`buildMlbFixture`). |
 | `api/poll.mjs` | Orchestrates fetch → match → normalize. Vercel function **and** local CLI. |

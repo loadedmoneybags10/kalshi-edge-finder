@@ -459,7 +459,7 @@ function fightExposure(st,fid){
 // ---- PRIMARY-account stats & records (the bankroll model). Primary = the
 // consensus / funded Kalshi account; the other agents are shadow "books". ----
 const sportLabel=s=>({ufc:"MMA",mls:"Soccer",mlb:"Baseball"}[s]||s);
-const leagueLabel=s=>({ufc:"UFC",mls:"MLS",mlb:"MLB",epl:"EPL",laliga:"La Liga",seriea:"Serie A",bundesliga:"Bundesliga"}[s]||s);
+const leagueLabel=s=>({ufc:"UFC",mls:"MLS",mlb:"MLB",epl:"EPL",laliga:"La Liga",seriea:"Serie A",bundesliga:"Bundesliga",eflcup:"EFL Cup",facup:"FA Cup"}[s]||s);
 const primaryBets=st=>st.positions.filter(p=>p.agentId==="consensus");
 function accountStats(st){
   const R=st.risk||RISK_DEFAULT(),a=st.agents.consensus||{bankroll:st.startingBankroll};
@@ -1002,7 +1002,7 @@ const S_BTTS=()=>({kalshi:{a:{ask:.55,bid:.52,last:.54,volume:4000},b:{ask:.49,b
 // SOCCER — weekend of Aug 29–31 2026 across five leagues (MLS + EPL, La Liga,
 // Serie A, Bundesliga). One sport bucket ("mls"), each fixture tagged by league.
 const MLS={
-  sport:"mls",label:"Soccer · Aug 26–31 · 5 leagues",emoji:"⚽",event:"Soccer — Aug 26–31 (MLS midweek + weekend: EPL · La Liga · Serie A · Bundesliga)",eventId:"soccer-2026-08-26",
+  sport:"mls",label:"Soccer · Aug 26–31 · leagues + cups",emoji:"⚽",event:"Soccer — Aug 26–31 (midweek: MLS + EFL Cup R2 · weekend: EPL · La Liga · Serie A · Bundesliga)",eventId:"soccer-2026-08-26",
   date:"2026-08-26",venue:"Multiple leagues",
   fights:[
     // ---- MLS · Wed Aug 26 (today, midweek — representative fixtures, real clubs) ----
@@ -1013,6 +1013,15 @@ const MLS={
     // Rocky Mountain Cup at altitude — Kalshi underprices the OVER 2.5. Edge.
     M("mls:0826:rsl-col","Real Salt Lake vs. Colorado","MLS · Wed Aug 26 · America First Field","Real Salt Lake","Colorado Rapids",MX_EFF(),S_OU(true),S_BTTS(),"mls"),
     M("mls:0826:phi-rbny","Philadelphia vs. NY Red Bulls","MLS · Wed Aug 26 · Subaru Park","Philadelphia Union","New York Red Bulls",MX_EFF(),S_OU(false),S_BTTS(),"mls"),
+
+    // ---- EFL Cup (Carabao Cup) · Round 2 · Wed Aug 26 (today, midweek — the
+    // live English midweek cup; FA Cup marquee rounds are Jan, registered dormant) ----
+    M("eflcup:0826:eve-shw","Everton vs. Sheffield Wednesday","EFL Cup R2 · Wed Aug 26 · Hill Dickinson Stadium","Everton","Sheffield Wednesday",MX_HOMEBIG(),S_OU(false),S_BTTS(),"eflcup"),
+    // PL club at home vs Championship side — Kalshi underprices the HOME side. Edge.
+    M("eflcup:0826:ful-bri","Fulham vs. Bristol City","EFL Cup R2 · Wed Aug 26 · Craven Cottage","Fulham","Bristol City",MX_HOME_EDGE(),S_OU(false),S_BTTS(),"eflcup"),
+    // Open cup tie — Kalshi underprices the OVER 2.5. Edge.
+    M("eflcup:0826:bre-rea","Brentford vs. Reading","EFL Cup R2 · Wed Aug 26 · Gtech Community Stadium","Brentford","Reading",MX_EFF(),S_OU(true),S_BTTS(),"eflcup"),
+    M("eflcup:0826:nfo-swa","Forest vs. Swansea City","EFL Cup R2 · Wed Aug 26 · The City Ground","Nottingham Forest","Swansea City",MX_HOMEBIG(),S_OU(false),S_BTTS(),"eflcup"),
 
     // ---- MLS · Sat Aug 29 (weekend) ----
     // Miami strong at home behind Messi — Kalshi underprices the HOME side. Edge.
@@ -1301,7 +1310,9 @@ function renderActive(){
 function leagueTabs(allMine){
   const box=$("ltabs");if(!box)return;
   if(activeSport!=="mls"){box.innerHTML="";return}
-  const leagues=["all","mls","epl","laliga","seriea","bundesliga"];
+  const order=["mls","epl","laliga","seriea","bundesliga","eflcup","facup"],
+        present=[...new Set(activeCard().fights.map(f=>f.league||"mls"))];
+  const leagues=["all",...order.filter(l=>present.includes(l)),...present.filter(l=>!order.includes(l))];
   const n=lg=>lg==="all"?allMine.length:allMine.filter(e=>(e.league||"mls")===lg).length;
   box.innerHTML=leagues.map(lg=>`<button class="mtab ${leagueFilter===lg?"active":""}" data-lg="${lg}">${lg==="all"?"All leagues":leagueLabel(lg)} · ${n(lg)}</button>`).join("");
   box.querySelectorAll("button").forEach(b=>b.onclick=()=>{leagueFilter=b.dataset.lg;render()});
