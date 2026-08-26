@@ -1,0 +1,12 @@
+{
+  "name": "kalshi-edge-finder",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Kalshi multi-sport betting edge finder — paper trading.",
+  "scripts": {
+    "poll": "node api/poll.mjs",
+    "poll:mlb": "node api/poll.mjs --sport=mlb"
+  },
+  "engines": { "node": ">=18" }
+}

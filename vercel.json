@@ -1,0 +1,7 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "functions": {
+    "api/poll.mjs": { "memory": 256, "maxDuration": 30 }
+  },
+  "comment_crons": "Phase 3 will add scheduled polling here, e.g. { \"path\": \"/api/poll?sport=mlb\", \"schedule\": \"*/5 * * * *\" }. Vercel Hobby allows daily crons; Pro allows minute-level."
+}
