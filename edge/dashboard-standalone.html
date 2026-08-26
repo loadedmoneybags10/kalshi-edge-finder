@@ -8,7 +8,7 @@
        MLB     — moneyline + run line (±1.5) + runs O/U
      The n-way de-vig + edge + 85% confidence gate + paper ledger are shared.
      Module twin for deploy: edge/dashboard.html. -->
-<title>Kalshi Edge Finder — UFC + MLS</title>
+<title>Kalshi Edge Finder</title>
 <style>
   :root{
     --bg:#0a0a0f; --panel:rgba(255,255,255,.03); --panel2:rgba(255,255,255,.05);
@@ -1002,10 +1002,19 @@ const S_BTTS=()=>({kalshi:{a:{ask:.55,bid:.52,last:.54,volume:4000},b:{ask:.49,b
 // SOCCER — weekend of Aug 29–31 2026 across five leagues (MLS + EPL, La Liga,
 // Serie A, Bundesliga). One sport bucket ("mls"), each fixture tagged by league.
 const MLS={
-  sport:"mls",label:"Soccer · Aug 29–31 · 5 leagues",emoji:"⚽",event:"Soccer — Aug 29–31 weekend (MLS · EPL · La Liga · Serie A · Bundesliga)",eventId:"soccer-2026-08-29",
-  date:"2026-08-29",venue:"Multiple leagues",
+  sport:"mls",label:"Soccer · Aug 26–31 · 5 leagues",emoji:"⚽",event:"Soccer — Aug 26–31 (MLS midweek + weekend: EPL · La Liga · Serie A · Bundesliga)",eventId:"soccer-2026-08-26",
+  date:"2026-08-26",venue:"Multiple leagues",
   fights:[
-    // ---- MLS ----
+    // ---- MLS · Wed Aug 26 (today, midweek — representative fixtures, real clubs) ----
+    // Orlando strong at home — Kalshi underprices the HOME side. Edge.
+    M("mls:0826:orl-tor","Orlando City vs. Toronto FC","MLS · Wed Aug 26 · Inter&Co Stadium","Orlando City SC","Toronto FC",MX_HOME_EDGE(),S_OU(false),S_BTTS(),"mls"),
+    // Cascadia rivalry — Kalshi underprices the DRAW. Edge.
+    M("mls:0826:por-van","Portland vs. Vancouver","MLS · Wed Aug 26 · Providence Park","Portland Timbers","Vancouver Whitecaps",MX_DRAW_EDGE(),S_OU(false),S_BTTS(),"mls"),
+    // Rocky Mountain Cup at altitude — Kalshi underprices the OVER 2.5. Edge.
+    M("mls:0826:rsl-col","Real Salt Lake vs. Colorado","MLS · Wed Aug 26 · America First Field","Real Salt Lake","Colorado Rapids",MX_EFF(),S_OU(true),S_BTTS(),"mls"),
+    M("mls:0826:phi-rbny","Philadelphia vs. NY Red Bulls","MLS · Wed Aug 26 · Subaru Park","Philadelphia Union","New York Red Bulls",MX_EFF(),S_OU(false),S_BTTS(),"mls"),
+
+    // ---- MLS · Sat Aug 29 (weekend) ----
     // Miami strong at home behind Messi — Kalshi underprices the HOME side. Edge.
     M("mls:mia-nsh","Inter Miami vs. Nashville SC","Sat Aug 29 · Chase Stadium","Inter Miami","Nashville SC",
       {kalshi:{home:{ask:.55,bid:.52,last:.54,volume:12000},draw:{ask:.28,bid:.25,last:.27,volume:5000},away:{ask:.24,bid:.21,last:.23,volume:7000}},
