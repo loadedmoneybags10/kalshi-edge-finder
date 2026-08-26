@@ -1216,6 +1216,7 @@ const aColor=id=>id==="consensus"?"#e8a44a":srcById(id).color;
 const mktClass=t=>({winner:"mkt-winner",match3:"mkt-winner",finish:"mkt-finish",rounds:"mkt-rounds",goals_ou:"mkt-rounds",runs_ou:"mkt-rounds",runline:"mkt-runline",btts:"mkt-btts"}[t]||"mkt-winner");
 let filter="all", leagueFilter="all", activeSport=localStorage.getItem(KEY+"_sport")||localStorage.getItem("kalshi_edge_finder_multisport_v3_sport")||"ufc";
 let state=migrate(load());
+let SERVER=false; // true once hydrated from /api/state (dashboard served over HTTP)
 function activeCard(){return CARDS[activeSport]}
 function fightById(fid){
   for(const c of Object.values(CARDS)){const f=c.fights.find(x=>x.id===fid);if(f)return f}
@@ -1263,7 +1264,7 @@ function migrate(s){
   s.positions.forEach(p=>{if(p.league==null){const f=fightById(p.fightId);p.league=f&&f.league?f.league:p.sport}});
   return s;
 }
-function save(){localStorage.setItem(KEY,JSON.stringify(state))}
+function save(){if(SERVER)return;localStorage.setItem(KEY,JSON.stringify(state))} // server store is authoritative in server mode
 
 // Scan + place bets for BOTH sports so P&L accrues regardless of the open tab.
 function rescanAll(){for(const c of Object.values(CARDS)){const{confirmed}=confirmCard(analyzeCard(c));confirmed.forEach(e=>placeBet(state,{...e,sport:c.sport}))}save()}
@@ -1281,7 +1282,7 @@ function nav(){
   $("nav").querySelectorAll("button").forEach(x=>x.onclick=()=>{activeView=x.dataset.view;localStorage.setItem(KEY+"_view",activeView);render()});
 }
 function render(){
-  rescanAll();snapshotBankroll(state);autoDaily();
+  if(!SERVER){rescanAll();autoDaily();}snapshotBankroll(state); // in server mode the poller/cron owns placement & automation
   $("sub").textContent="Autonomous multi-sport betting — settles, archives, recomputes, and re-slates daily.";
   nav();
   document.querySelectorAll(".view").forEach(v=>v.style.display="none");
@@ -1675,7 +1676,17 @@ function prov(){
     `a live deploy with API keys runs the same engine on real-time quotes. Three-way markets use multiplicative de-vig across all outcomes. `+
     `Gate ${GATE}%. Primary (Kalshi) account staking: unit sizing (¼ Kelly or fixed unit) capped by risk limits — max single play 5%, max sport 25%, max daily 40% of bankroll. CLV is measured vs de-vig fair (a proxy for the closing line). Paper only — no real money.`;
 }
-$("reset").onclick=()=>{if(confirm("Reset the bankroll and clear all wagers/records/logs back to $1,000?")){state=initLedger(agentIds());save();render()}};
-$("run-auto").onclick=()=>{runDailyAutomation(state,{force:true});activeView="logs";localStorage.setItem(KEY+"_view",activeView);save();render()};
-render();
+$("reset").onclick=async()=>{if(!confirm("Reset the bankroll and clear all wagers/records/logs back to $1,000?"))return;
+  if(SERVER){await fetch("/api/state",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({reset:1})});await hydrate();render();return;}
+  state=initLedger(agentIds());save();render();};
+$("run-auto").onclick=async()=>{
+  if(SERVER){await fetch("/api/poll?sport=mlb");await fetch("/api/close?force=1");await fetch("/api/grade?sport=mlb");await hydrate();activeView="logs";localStorage.setItem(KEY+"_view",activeView);render();return;}
+  runDailyAutomation(state,{force:true});activeView="logs";localStorage.setItem(KEY+"_view",activeView);save();render();};
+// ---- boot: hydrate the shared ledger over HTTP; else use localStorage (standalone) ----
+async function hydrate(){
+  if(!location.protocol.startsWith("http"))return false;
+  try{const r=await fetch("/api/state");if(!r.ok)return false;const j=await r.json();
+    if(j&&j.state&&j.state.agents){state=migrate(j.state);SERVER=true;return true;}}catch(e){}
+  return false;}
+(async()=>{await hydrate();render();})();
 </script>

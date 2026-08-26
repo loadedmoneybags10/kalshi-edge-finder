@@ -56,6 +56,11 @@ export async function pollMlbCard() {
 export async function runPoll(sport = "mlb") {
   const card = await pollMlbCard();               // (soccer/UFC cards land here once normalized)
   const state = await loadState();
+  // Stash lightweight fixture defs so the grader/CLV jobs can resolve markets later.
+  state.fixtures = state.fixtures || {};
+  for (const f of card.fights)
+    state.fixtures[f.id] = { id: f.id, sport: f.sport, name: f.name, commenceTime: f.commenceTime,
+      markets: f.markets.map(m => ({ key: m.key, type: m.type, line: m.line ?? null, favSide: m.favSide ?? null })) };
   const { confirmed } = confirmCard(analyzeCard(card));
   const placed = [];
   for (const e of confirmed) {
