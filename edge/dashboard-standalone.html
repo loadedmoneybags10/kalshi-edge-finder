@@ -1,0 +1,1616 @@
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- Self-contained Kalshi Edge Finder. No server, no imports, no external fonts.
+     Three sports through ONE engine:
+       UFC     — two-way markets (winner, finish/distance, round O/U)
+       Soccer  — three-way match result (1X2) + goals O/U + BTTS,
+                 across MLS · EPL · La Liga · Serie A · Bundesliga
+       MLB     — moneyline + run line (±1.5) + runs O/U
+     The n-way de-vig + edge + 85% confidence gate + paper ledger are shared.
+     Module twin for deploy: edge/dashboard.html. -->
+<title>Kalshi Edge Finder — UFC + MLS</title>
+<style>
+  :root{
+    --bg:#0a0a0f; --panel:rgba(255,255,255,.03); --panel2:rgba(255,255,255,.05);
+    --border:rgba(255,255,255,.08); --ink:#f0eee8; --muted:rgba(240,238,232,.5); --faint:rgba(240,238,232,.3);
+    --gold:#e8a44a; --gold-dim:rgba(232,164,74,.14);
+    --green:#37c489; --red:#f26069; --blue:#4f9dd6; --purple:#8a63ff; --pink:#e46aa7; --teal:#2fb9a8;
+    --ui:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --mono:ui-monospace,"SF Mono","SFMono-Regular",Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:var(--ui);background:radial-gradient(1200px 600px at 80% -10%,rgba(232,164,74,.06),transparent 60%),var(--bg);color:var(--ink);min-height:100vh;-webkit-font-smoothing:antialiased;line-height:1.45}
+  .mono{font-family:var(--mono);font-variant-numeric:tabular-nums;letter-spacing:-.2px}
+  .pos{color:var(--green)} .neg{color:var(--red)}
+  ::selection{background:rgba(232,164,74,.25)}
+  header{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;padding:1.05rem 1.5rem;border-bottom:1px solid var(--border);background:linear-gradient(180deg,rgba(255,255,255,.02),transparent)}
+  .brand{font-size:19px;font-weight:800;letter-spacing:-.4px} .brand .b{color:var(--gold)}
+  .sub{font-size:12px;color:var(--muted);margin-top:2px}
+  .hdr-right{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+  .badge{font-size:10px;font-weight:700;letter-spacing:.7px;text-transform:uppercase;padding:5px 10px;border-radius:6px;border:1px solid}
+  .badge.paper{background:var(--gold-dim);color:var(--gold);border-color:rgba(232,164,74,.35)}
+  .badge.src{background:rgba(79,157,214,.1);color:var(--blue);border-color:rgba(79,157,214,.3)}
+  button{font-family:var(--ui);cursor:pointer;transition:all .14s}
+  .btn{font-size:12.5px;font-weight:600;padding:8px 14px;border-radius:8px;background:var(--panel2);border:1px solid var(--border);color:var(--muted)}
+  .btn:hover{border-color:rgba(232,164,74,.5);color:var(--gold)}
+  .btn:focus-visible,button:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+  main{max-width:1200px;margin:0 auto;padding:1.5rem 1.5rem 4rem;display:flex;flex-direction:column;gap:1.6rem}
+  .sport-tabs{display:flex;gap:2px;border-bottom:1px solid var(--border)}
+  .sport-tab{display:flex;align-items:center;gap:9px;padding:12px 22px;border:none;background:transparent;color:var(--muted);font-weight:700;font-size:15px;border-bottom:2px solid transparent;margin-bottom:-1px}
+  .sport-tab .emoji{font-size:18px}
+  .sport-tab small{font-weight:600;font-size:11px;color:var(--faint);letter-spacing:.2px}
+  .sport-tab:hover{color:var(--ink)}
+  .sport-tab.active{color:var(--ink);border-bottom-color:var(--gold)}
+  .sport-tab.active small{color:var(--gold)}
+  .disclaimer{border:1px solid rgba(242,96,105,.22);background:rgba(242,96,105,.05);border-radius:11px;padding:12px 15px;font-size:12.5px;color:rgba(240,238,232,.68);line-height:1.6}
+  .disclaimer strong{color:var(--ink)}
+  .stat-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(175px,1fr));gap:13px}
+  .stat{background:var(--panel);border:1px solid var(--border);border-radius:13px;padding:15px 17px;position:relative;overflow:hidden}
+  .stat::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--gold);opacity:.5}
+  .stat.acc-green::before{background:var(--green)} .stat.acc-red::before{background:var(--red)}
+  .stat .k{font-size:10px;letter-spacing:.9px;text-transform:uppercase;color:var(--faint);font-weight:700}
+  .stat .v{font-size:26px;font-weight:750;margin-top:7px;letter-spacing:-.6px;font-family:var(--mono);font-variant-numeric:tabular-nums}
+  .stat .v.sm{font-size:19px}
+  .stat .d{font-size:11.5px;color:var(--muted);margin-top:3px}
+  .sec-head{display:flex;align-items:baseline;gap:9px;flex-wrap:wrap}
+  .sec-title{font-size:15px;font-weight:800;letter-spacing:-.2px}
+  .count{font-size:11px;font-weight:700;color:var(--gold);background:var(--gold-dim);border:1px solid rgba(232,164,74,.3);border-radius:20px;padding:2px 9px}
+  .sec-sub{font-size:12px;color:var(--muted);margin-top:4px;margin-bottom:13px;max-width:78ch}
+  .mtabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:13px}
+  .mtab{font-size:11.5px;font-weight:600;padding:6px 12px;border-radius:20px;border:1px solid var(--border);background:transparent;color:var(--muted)}
+  .mtab:hover{border-color:rgba(232,164,74,.4);color:var(--gold)}
+  .mtab.active{background:var(--gold-dim);border-color:rgba(232,164,74,.4);color:var(--gold)}
+  .edges{display:flex;flex-direction:column;gap:11px}
+  .edge{background:var(--panel);border:1px solid var(--border);border-radius:13px;padding:15px 17px}
+  .edge.confirmed{border-color:rgba(55,196,137,.3);background:linear-gradient(180deg,rgba(55,196,137,.04),transparent)}
+  .edge.rej{border-color:rgba(242,96,105,.22)}
+  .edge-top{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;flex-wrap:wrap}
+  .edge-eyebrow{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .edge-fight{font-size:10.5px;color:var(--faint);letter-spacing:.4px;text-transform:uppercase;font-weight:700}
+  .mkt-chip{font-size:9.5px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;padding:2px 8px;border-radius:5px;border:1px solid}
+  .mkt-winner{color:var(--gold);border-color:rgba(232,164,74,.4);background:var(--gold-dim)}
+  .mkt-finish{color:var(--purple);border-color:rgba(138,99,255,.4);background:rgba(138,99,255,.12)}
+  .mkt-rounds{color:var(--blue);border-color:rgba(79,157,214,.4);background:rgba(79,157,214,.12)}
+  .mkt-btts{color:var(--pink);border-color:rgba(228,106,167,.4);background:rgba(228,106,167,.12)}
+  .mkt-runline{color:var(--teal);border-color:rgba(47,185,168,.4);background:rgba(47,185,168,.12)}
+  .edge-pick{font-size:16.5px;font-weight:700;margin-top:5px;letter-spacing:-.2px}
+  .edge-pick .vs{color:var(--muted);font-weight:400;font-size:13px}
+  .agent-tag{display:inline-block;margin-top:8px;font-size:10px;font-weight:700;padding:3px 9px;border-radius:20px;text-transform:capitalize;border:1px solid var(--border)}
+  .edge-nums{display:flex;gap:20px;flex-wrap:wrap}
+  .num{text-align:right}
+  .num .k{font-size:9px;letter-spacing:.6px;text-transform:uppercase;color:var(--faint);font-weight:700}
+  .num .v{font-size:17px;font-weight:700;margin-top:2px;font-family:var(--mono);font-variant-numeric:tabular-nums}
+  .conf-wrap{margin-top:13px}
+  .conf-head{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:6px}
+  .conf-head b{color:var(--ink);font-weight:700}
+  .conf-track{height:8px;background:rgba(255,255,255,.06);border-radius:6px;position:relative}
+  .conf-fill{height:100%;border-radius:6px}
+  .conf-gate{position:absolute;top:-4px;bottom:-4px;width:2px;background:rgba(240,238,232,.55)}
+  .factors{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:9px;margin-top:14px}
+  .factor .fk{font-size:10px;color:var(--faint);text-transform:capitalize;display:flex;justify-content:space-between}
+  .factor .fk span:last-child{font-family:var(--mono);color:var(--muted)}
+  .factor .ft{height:4px;background:rgba(255,255,255,.06);border-radius:4px;margin-top:4px;overflow:hidden}
+  .factor .ff{height:100%;border-radius:4px;background:var(--muted)}
+  .tbl-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:13px}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th{text-align:left;font-size:9.5px;letter-spacing:.8px;text-transform:uppercase;color:var(--faint);font-weight:700;padding:11px 12px;border-bottom:1px solid var(--border);white-space:nowrap;background:rgba(255,255,255,.015)}
+  td{padding:12px;border-bottom:1px solid rgba(255,255,255,.05);white-space:nowrap}
+  tbody tr:last-child td{border-bottom:none}
+  th.r,td.r{text-align:right}
+  tr.consensus td{background:rgba(232,164,74,.06)}
+  .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:9px;vertical-align:middle}
+  .aname{font-weight:700;text-transform:capitalize}
+  .aname small{display:block;font-weight:400;color:var(--faint);font-size:10px;text-transform:none;letter-spacing:0}
+  .rank{color:var(--faint);font-family:var(--mono)} .crown{color:var(--gold)}
+  .settle-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(310px,1fr));gap:11px}
+  .settle-card{background:var(--panel);border:1px solid var(--border);border-radius:11px;padding:13px 15px}
+  .settle-card .fname{font-size:14px;font-weight:700}
+  .settle-card .fslot{font-size:10px;color:var(--faint);margin:1px 0 4px;text-transform:uppercase;letter-spacing:.4px;font-weight:700}
+  .past-tag{font-size:9px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;padding:1px 6px;border-radius:4px;color:var(--faint);border:1px solid var(--border);vertical-align:middle}
+  /* bankroll flow + risk meters */
+  .flow{display:flex;gap:10px;flex-wrap:wrap;align-items:stretch}
+  .flow-card{flex:1 1 165px;background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:13px 15px}
+  .flow-card .k{font-size:10px;letter-spacing:.9px;text-transform:uppercase;color:var(--faint);font-weight:700}
+  .flow-card .v{font-size:23px;font-weight:750;margin-top:6px;font-family:var(--mono);font-variant-numeric:tabular-nums;letter-spacing:-.5px}
+  .flow-card .d{font-size:11px;color:var(--muted);margin-top:3px}
+  .flow-arrow{align-self:center;color:var(--faint);font-size:17px}
+  .risk-panel{margin-top:12px;display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px}
+  .meter{background:var(--panel);border:1px solid var(--border);border-radius:11px;padding:12px 14px}
+  .meter .k{font-size:10px;letter-spacing:.4px;text-transform:uppercase;color:var(--faint);font-weight:700;display:flex;justify-content:space-between;gap:10px}
+  .meter .k b{color:var(--ink);font-family:var(--mono);font-variant-numeric:tabular-nums;text-transform:none;letter-spacing:0}
+  .meter .track{height:7px;background:rgba(255,255,255,.06);border-radius:5px;margin-top:8px;overflow:hidden}
+  .meter .fill{height:100%;border-radius:5px;background:var(--gold)}
+  .meter .fill.hot{background:var(--red)}
+  .controls{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:13px}
+  .ctl-label{font-size:10.5px;color:var(--faint);text-transform:uppercase;letter-spacing:.5px;font-weight:700}
+  .seg{display:inline-flex;border:1px solid var(--border);border-radius:8px;overflow:hidden}
+  .seg button{padding:6px 12px;background:transparent;border:none;border-right:1px solid var(--border);color:var(--muted);font-size:12px;font-weight:600}
+  .seg button:last-child{border-right:none}
+  .seg button.on{background:var(--gold-dim);color:var(--gold)}
+  .records-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  @media (max-width:640px){.records-grid{grid-template-columns:1fr}}
+  .rec-title{font-size:11px;letter-spacing:.6px;text-transform:uppercase;color:var(--faint);font-weight:700;margin-bottom:7px}
+  .void-row{margin-top:11px}
+  .void-btn{font-size:11px;padding:6px 11px;border-radius:7px;border:1px solid var(--border);background:transparent;color:var(--muted);font-weight:600}
+  .void-btn:hover{border-color:rgba(242,96,105,.5);color:var(--red)}
+  .pill.push{background:rgba(240,238,232,.1);color:var(--muted)}
+  .pill.void{background:rgba(242,96,105,.12);color:var(--red)}
+  .btn.primary{background:var(--gold);color:#0a0a0f;border-color:var(--gold)} .btn.primary:hover{background:#f2b45f;color:#0a0a0f}
+  /* top navigation + views */
+  .topnav{display:flex;gap:2px;flex-wrap:wrap;max-width:1200px;margin:0 auto;padding:10px 1.5rem 0;overflow-x:auto}
+  .nav-btn{padding:9px 15px;background:transparent;border:none;border-bottom:2px solid transparent;color:var(--muted);font-weight:700;font-size:13.5px;white-space:nowrap;font-family:var(--ui);cursor:pointer;display:flex;align-items:center;gap:6px}
+  .nav-btn small{font-size:10px;font-weight:700;background:rgba(255,255,255,.08);color:var(--faint);border-radius:10px;padding:1px 6px}
+  .nav-btn:hover{color:var(--ink)}
+  .nav-btn.active{color:var(--ink);border-bottom-color:var(--gold)}
+  .nav-btn.active small{background:var(--gold-dim);color:var(--gold)}
+  .view{display:flex;flex-direction:column;gap:1.5rem}
+  /* profile filters */
+  .filters{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;margin-bottom:14px}
+  .fg{display:flex;flex-direction:column;gap:5px}
+  .fg label{font-size:9.5px;text-transform:uppercase;letter-spacing:.5px;color:var(--faint);font-weight:700}
+  .filters select,.filters input{background:var(--panel2);border:1px solid var(--border);border-radius:8px;color:var(--ink);font-size:12.5px;padding:7px 9px;font-family:var(--ui)}
+  /* analytics charts */
+  .charts-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px}
+  .chart-card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:13px 15px}
+  .chart{width:100%;height:120px;display:block;margin-top:8px}
+  /* reports */
+  #reports{display:flex;flex-direction:column;gap:10px}
+  .report-card{background:var(--panel);border:1px solid var(--border);border-radius:11px;padding:13px 15px}
+  .report-head{display:flex;justify-content:space-between;align-items:baseline}
+  .report-head .d{font-size:11px;color:var(--faint)}
+  .report-body{display:flex;gap:16px;flex-wrap:wrap;font-size:12.5px;color:var(--muted);margin-top:7px}
+  .report-body b{color:var(--ink);font-family:var(--mono)}
+  /* settings */
+  .set-panel{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:6px 16px}
+  .set-row{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:13px 0;border-bottom:1px solid var(--border);flex-wrap:wrap}
+  .set-row:last-child{border-bottom:none}
+  .set-row label{font-size:13px;font-weight:600;color:var(--ink)}
+  /* logs */
+  .logbox{background:var(--panel);border:1px solid var(--border);border-radius:11px;padding:6px 0;font-family:var(--mono);font-size:12px}
+  .logline{display:flex;gap:12px;padding:6px 15px;border-bottom:1px solid rgba(255,255,255,.04);align-items:baseline}
+  .logline:last-child{border-bottom:none}
+  .logts{color:var(--faint);white-space:nowrap;font-size:11px}
+  .logkind{text-transform:uppercase;font-size:10px;font-weight:700;letter-spacing:.5px;min-width:66px}
+  .exposure{display:flex;gap:12px;font-size:11px;color:var(--muted);margin:8px 0 11px;padding:7px 0;border-top:1px solid var(--border);border-bottom:1px solid var(--border)}
+  .exposure b{color:var(--ink);font-family:var(--mono)}
+  .srow-label{font-size:9.5px;text-transform:uppercase;letter-spacing:.5px;color:var(--faint);font-weight:700;margin:9px 0 5px}
+  .win-btns{display:flex;gap:6px;flex-wrap:wrap}
+  .win-btns button{flex:1 1 auto;min-width:40px;font-size:11.5px;padding:8px 6px;border-radius:8px;border:1px solid var(--border);background:var(--panel2);color:var(--muted);font-weight:600}
+  .win-btns button:hover{border-color:rgba(55,196,137,.55);color:var(--green)}
+  .win-btns button.won{background:rgba(55,196,137,.16);border-color:var(--green);color:var(--green);font-weight:700}
+  .win-btns button.lost{opacity:.4}
+  .pill{font-size:9.5px;font-weight:700;padding:3px 9px;border-radius:20px;letter-spacing:.3px}
+  .pill.win{background:rgba(55,196,137,.16);color:var(--green)}
+  .pill.loss{background:rgba(242,96,105,.16);color:var(--red)}
+  .pill.open{background:rgba(255,255,255,.07);color:var(--muted)}
+  .empty{font-size:12.5px;color:var(--muted);padding:16px;text-align:center}
+  .note{font-size:11.5px;color:var(--faint);line-height:1.65;max-width:96ch}
+  @media (max-width:600px){.stat .v{font-size:22px}.edge-nums{gap:14px}}
+  @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<header>
+  <div>
+    <div class="brand">Kalshi <span class="b">Edge</span> Finder</div>
+    <div class="sub" id="sub"></div>
+  </div>
+  <div class="hdr-right">
+    <span class="badge src">Seed snapshot</span>
+    <span class="badge paper">Paper</span>
+    <button class="btn primary" id="run-auto">▶ Run daily automation</button>
+    <button class="btn" id="reset">Reset</button>
+  </div>
+</header>
+
+<nav class="topnav" id="nav"></nav>
+
+<main>
+  <!-- ACTIVE BETS — upcoming, unsettled wagers only -->
+  <div class="view" id="view-active">
+    <div class="sport-tabs" id="sportswitch" role="tablist"></div>
+    <div class="sec-sub" id="edge-sub" style="margin:2px 0 12px"></div>
+    <div class="mtabs" id="ltabs"></div>
+    <div class="mtabs" id="mtabs"></div>
+    <div class="edges" id="confirmed"></div>
+    <section>
+      <div class="sec-head"><span class="sec-title">Settle &amp; grade</span></div>
+      <div class="sec-sub" id="settle-sub"></div>
+      <div class="settle-grid" id="settle"></div>
+    </section>
+    <section>
+      <div class="sec-head"><span class="sec-title">Below the gate</span></div>
+      <div class="sec-sub">Signals the confirmation agent rejected on the active desk.</div>
+      <div class="edges" id="rejected"></div>
+    </section>
+  </div>
+
+  <!-- PROFILE — permanent, immutable settled archive -->
+  <div class="view" id="view-profile">
+    <div class="sec-head"><span class="sec-title">Profile</span><span class="count" id="profile-count">0</span></div>
+    <div class="sec-sub">A permanent, immutable archive of every settled wager — nothing is ever deleted. Filters combine.</div>
+    <div id="profile-filters"></div>
+    <div class="tbl-wrap"><table id="profile-tbl"></table></div>
+  </div>
+
+  <!-- BANKROLL -->
+  <div class="view" id="view-bankroll">
+    <div class="sec-head"><span class="sec-title">Bankroll &amp; risk management</span></div>
+    <div class="sec-sub">Starting → current bankroll (after every settled wager) → unit size (bankroll × unit %) → risk limits.</div>
+    <div id="bankroll"></div>
+    <div class="stat-row" id="perf" style="margin-top:16px"></div>
+  </div>
+
+  <!-- ANALYTICS -->
+  <div class="view" id="view-analytics">
+    <div class="sec-head"><span class="sec-title">Analytics</span></div>
+    <div class="sec-sub">Computed from the immutable Profile archive.</div>
+    <div id="analytics"></div>
+  </div>
+
+  <!-- DAILY REPORTS -->
+  <div class="view" id="view-reports">
+    <div class="sec-head"><span class="sec-title">Daily reports</span></div>
+    <div class="sec-sub">One summary per automation run — what settled, day P/L, bankroll, and the new slate generated.</div>
+    <div id="reports"></div>
+  </div>
+
+  <!-- BOOKMAKERS -->
+  <div class="view" id="view-books">
+    <div class="sec-head"><span class="sec-title">Bookmakers</span></div>
+    <div class="sec-sub">Each source is a book agent. The leaderboard shows who's sharpest; pick a book for its record and open signals.</div>
+    <div class="tbl-wrap"><table id="lb"></table></div>
+    <div class="mtabs" id="book-tabs" style="margin-top:14px"></div>
+    <div id="book-detail"></div>
+  </div>
+
+  <!-- SETTINGS -->
+  <div class="view" id="view-settings">
+    <div class="sec-head"><span class="sec-title">Settings</span></div>
+    <div class="sec-sub">Bankroll management, staking, and risk limits. Existing models and calculations are unchanged.</div>
+    <div id="settings"></div>
+  </div>
+
+  <!-- AUTOMATION LOGS -->
+  <div class="view" id="view-logs">
+    <div class="sec-head"><span class="sec-title">Automation logs</span></div>
+    <div class="sec-sub">Every automated action, newest first. Daily runs are idempotent and fault-tolerant.</div>
+    <div id="logs"></div>
+  </div>
+
+  <div class="note" id="prov"></div>
+</main>
+
+<script>
+/* ============================ ODDS MATH ============================ */
+const americanToImplied=a=>{a=+a;if(!isFinite(a)||a===0)return NaN;return a>0?100/(a+100):-a/(-a+100)};
+const mean=v=>{const x=v.filter(isFinite);return x.length?x.reduce((s,n)=>s+n,0)/x.length:NaN};
+const stdev=v=>{const x=v.filter(isFinite);if(x.length<2)return 0;const m=mean(x);return Math.sqrt(x.reduce((s,n)=>s+(n-m)**2,0)/x.length)};
+const wmean=(vals,ws)=>{let n=0,d=0;for(let i=0;i<vals.length;i++){const v=vals[i],w=ws[i]??1;if(isFinite(v)&&isFinite(w)&&w>0){n+=v*w;d+=w}}return d>0?n/d:NaN};
+
+const SOURCES={
+  kalshi:{id:"kalshi",name:"Kalshi",kind:"prediction-market",sharpness:.72,isTarget:true,color:"#37c489"},
+  polymarket:{id:"polymarket",name:"Polymarket",kind:"prediction-market",sharpness:.8,color:"#8a63ff"},
+  pinnacle:{id:"pinnacle",name:"Pinnacle",kind:"sportsbook",sharpness:.95,color:"#e8a44a"},
+  draftkings:{id:"draftkings",name:"DraftKings",kind:"sportsbook",sharpness:.62,color:"#53b04f"},
+  fanduel:{id:"fanduel",name:"FanDuel",kind:"sportsbook",sharpness:.6,color:"#3d95ce"},
+};
+const refs=()=>Object.values(SOURCES).filter(s=>!s.isTarget);
+const srcById=id=>SOURCES[id]||{id,name:id,sharpness:.5,color:"#888",kind:""};
+const GATE=85;
+const WEIGHTS={agreement:.32,sharpness:.2,magnitude:.18,liquidity:.15,stability:.15};
+const clamp01=x=>Math.max(0,Math.min(1,x));
+
+/* The two sides of a two-way market, or the outcomes of an n-way market. */
+function marketSides(mk){return mk.sides?mk.sides:[{key:"a",name:mk.a},{key:"b",name:mk.b}]}
+/* n-way multiplicative de-vig: divide each raw implied prob by their sum.
+   Reduces to the standard two-way de-vig when there are two sides. */
+function fairFromQuote(src,quote,sides){
+  if(!quote)return null;
+  const implied=sides.map(s=>{const v=quote[s.key];return src.kind==="sportsbook"?americanToImplied(v):Number(v)});
+  const sum=implied.reduce((a,b)=>a+(isFinite(b)?b:0),0);
+  if(!(sum>0))return null;
+  const fair={};sides.forEach((s,i)=>fair[s.key]=implied[i]/sum);
+  return fair;
+}
+/* Analyze one market (any number of outcomes). Returns per-source fair reads,
+   Kalshi asks, consensus, and a best +EV signal per agent. */
+function analyzeMarket(fight,mk,minEdge=.02){
+  const sides=marketSides(mk),R=refs(),reads={};
+  R.forEach(s=>reads[s.id]=fairFromQuote(s,mk.books?.[s.id],sides));
+  const consensus={},disp={},asks={};
+  sides.forEach(sd=>{
+    const vals=R.map(s=>reads[s.id]?reads[s.id][sd.key]:NaN);
+    const ws=R.map(s=>reads[s.id]&&isFinite(reads[s.id][sd.key])?s.sharpness:0);
+    consensus[sd.key]=wmean(vals,ws);
+    disp[sd.key]=stdev(vals.filter(isFinite));
+    const q=mk.kalshi?.[sd.key];asks[sd.key]=q?(isFinite(q.ask)?q.ask:+q.last):NaN;
+  });
+  const volume=sides.reduce((t,sd)=>t+(+(mk.kalshi?.[sd.key]?.volume||0)),0);
+  const hasKalshi=sides.some(sd=>isFinite(asks[sd.key]));
+  const build=(id,fairMap,sh)=>{
+    if(!hasKalshi||!fairMap)return null;
+    let best=null;
+    sides.forEach(sd=>{const fair=fairMap[sd.key],price=asks[sd.key];
+      if(!isFinite(fair)||!(price>0))return;const roi=fair/price-1;
+      if(roi>=minEdge&&(!best||roi>best.roi))best={sd,fair,price,roi}});
+    if(!best)return null;
+    return{agentId:id,fightId:fight.id,fightName:fight.name,fightSlot:fight.slot,league:fight.league,
+      marketKey:mk.key,marketLabel:mk.label,marketType:mk.type,line:mk.line??null,
+      side:best.sd.key,sideName:best.sd.name,oppName:sides.filter(x=>x.key!==best.sd.key).map(x=>x.name).join(" / "),
+      fairProb:best.fair,kalshiPrice:best.price,edgeRoi:best.roi,edgePts:best.fair-best.price,
+      sharpness:sh,dispersion:disp[best.sd.key],volume};
+  };
+  const signals=[];
+  R.forEach(s=>{const x=build(s.id,reads[s.id],s.sharpness);if(x)signals.push(x)});
+  const cs=build("consensus",consensus,.9);if(cs)signals.push(cs);
+  return{market:mk,reads,asks,consensus,signals};
+}
+const analyzeFight=f=>({fight:f,markets:f.markets.map(mk=>analyzeMarket(f,mk))});
+const analyzeCard=c=>({...c,fights:c.fights.map(analyzeFight)});
+
+function scoreConf(sig,am){
+  const price=am.asks[sig.side];
+  let agree=0,tot=0;const bf=[];
+  for(const id in am.reads){const r=am.reads[id];if(!r)continue;const fs=r[sig.side];if(!isFinite(fs))continue;tot++;bf.push(fs);if(fs>price)agree++}
+  const agreement=tot?agree/tot:0;
+  const sharpness=sig.agentId==="consensus"?.9:srcById(sig.agentId).sharpness;
+  const roi=sig.edgeRoi;let magnitude;
+  if(roi<=0)magnitude=0;else if(roi<=.12)magnitude=roi/.12;else if(roi<=.25)magnitude=1;else magnitude=clamp01(1-(roi-.25)/.35);
+  const vol=+sig.volume||0,liquidity=clamp01(Math.log10(vol+1)/Math.log10(40000));
+  const stability=clamp01(1-sig.dispersion/.08);
+  const factors={agreement,sharpness,magnitude,liquidity,stability};
+  let s=0;for(const k in WEIGHTS)s+=WEIGHTS[k]*factors[k];
+  return{confidence:Math.round(s*100),factors,detail:{booksAgreeing:agree,booksQuoting:tot,bookFairMean:mean(bf)}};
+}
+function confirmCard(an){
+  const edges=[];
+  an.fights.forEach(fa=>fa.markets.forEach(am=>am.signals.forEach(sg=>edges.push({...sg,...scoreConf(sg,am)}))));
+  edges.sort((x,y)=>y.confidence-x.confidence||y.edgeRoi-x.edgeRoi);
+  return{all:edges,confirmed:edges.filter(e=>e.confidence>=GATE)};
+}
+
+/* ============================ LEDGER ============================ */
+const START=1000,KF=.25,MAXF=.05,MINS=1;
+const r2=x=>Math.round((+x+Number.EPSILON)*100)/100, r4=x=>Math.round((+x+Number.EPSILON)*1e4)/1e4;
+const uid=()=>"p_"+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+const agentIds=()=>[...Object.keys(SOURCES).filter(i=>i!=="kalshi"),"consensus"];
+// Risk-management defaults for the PRIMARY (consensus / funded Kalshi) account.
+const RISK_DEFAULT=()=>({unitPct:.02,mode:"kelly",maxSinglePct:.05,maxSportPct:.25,maxDailyPct:.40});
+function initLedger(ids,st=START){const agents={};ids.forEach(id=>agents[id]={bankroll:st,staked:0,openCount:0,settledCount:0,wins:0,losses:0});
+  return{startingBankroll:st,createdAt:new Date().toISOString(),agents,positions:[],results:{},risk:RISK_DEFAULT()}}
+function kelly(bk,price,p){if(!(price>0&&price<1)||!(p>0&&p<1))return 0;const b=(1-price)/price,f=(b*p-(1-p))/b;if(!(f>0))return 0;return Math.max(0,bk*Math.min(f*KF,MAXF))}
+// Stake for the PRIMARY account: unit sizing (Kelly or Fixed) capped by the risk
+// limits (max single play, max sport exposure, max daily/total exposure).
+function primaryStake(st,e){
+  const a=st.agents.consensus,R=st.risk||RISK_DEFAULT(),bk=a.bankroll;
+  const unit=bk*R.unitPct;
+  const desired=R.mode==="fixed"?unit:kelly(bk,e.kalshiPrice,e.fairProb);
+  const openBy=f=>st.positions.filter(p=>p.agentId==="consensus"&&p.status==="open"&&f(p)).reduce((s,p)=>s+p.stake,0);
+  return Math.max(0,Math.min(desired,bk*R.maxSinglePct,bk*R.maxSportPct-openBy(p=>p.sport===e.sport),bk*R.maxDailyPct-openBy(()=>true),bk));
+}
+function placeBet(st,e){
+  const a=st.agents[e.agentId];if(!a)return null;
+  if(st.positions.find(p=>p.agentId===e.agentId&&p.fightId===e.fightId&&p.marketKey===e.marketKey))return null;
+  const stake=e.agentId==="consensus"?primaryStake(st,e):Math.min(kelly(a.bankroll,e.kalshiPrice,e.fairProb),a.bankroll);
+  if(stake<MINS)return null;
+  const contracts=stake/e.kalshiPrice;
+  const pos={id:uid(),agentId:e.agentId,sport:e.sport,league:e.league||e.sport,fightId:e.fightId,fightName:e.fightName,
+    marketKey:e.marketKey,marketLabel:e.marketLabel,marketType:e.marketType,line:e.line,
+    side:e.side,sideName:e.sideName,stake:r2(stake),contracts:r2(contracts),price:r4(e.kalshiPrice),
+    fairProb:r4(e.fairProb),closingProb:r4(e.fairProb),edgeRoi:r4(e.edgeRoi),confidence:e.confidence??null,
+    reason:buildReason(e),notes:"",units:e.agentId==="consensus"&&st.risk?r2(stake/Math.max(1e-9,a.bankroll*st.risk.unitPct)):null,
+    finalScore:null,status:"open",placedAt:new Date().toISOString(),result:null,grade:null,pnl:0};
+  a.bankroll=r2(a.bankroll-stake);a.staked=r2(a.staked+stake);a.openCount++;st.positions.push(pos);return pos;
+}
+/* Map a result to the winning side of a market.
+   UFC result {winner,method,endRound}; MLS result {result,totalGoals,btts}. */
+function resolveSide(mk,res){
+  if(!res)return null;
+  if(mk.type==="winner")return res.winner||null;
+  if(mk.type==="match3")return res.result||null;
+  if(mk.type==="btts")return res.btts==null?null:(res.btts?"a":"b");           // a=Yes,b=No
+  if(mk.type==="finish")return res.method?(res.method==="dec"?"b":"a"):null;    // a=inside,b=distance
+  if(mk.type==="rounds")return res.method?((res.method==="dec"||res.endRound>Math.floor(mk.line))?"a":"b"):null; // a=Over
+  if(mk.type==="goals_ou")return res.totalGoals==null?null:(res.totalGoals>mk.line?"a":"b");                     // a=Over
+  if(mk.type==="runs_ou")return res.totalRuns==null?null:(res.totalRuns>mk.line?"a":"b");                        // a=Over
+  if(mk.type==="runline"){                                                       // a=favorite -1.5, b=underdog +1.5
+    if(!res.winner||res.margin==null)return null;
+    return (res.winner===mk.favSide&&res.margin>=2)?"a":"b";
+  }
+  return null;
+}
+function settleMarket(st,fid,mkey,win){
+  st.positions.forEach(p=>{if(p.fightId!==fid||p.marketKey!==mkey||p.status!=="open")return;
+    const a=st.agents[p.agentId],won=p.side===win,payout=won?p.contracts:0;
+    p.result=won?"win":"loss";p.grade=p.result;p.pnl=r2(payout-p.stake);p.status="settled";p.settledAt=new Date().toISOString();
+    a.bankroll=r2(a.bankroll+payout);a.openCount=Math.max(0,a.openCount-1);a.settledCount++;won?a.wins++:a.losses++;});
+}
+// Void every OPEN bet on a fight (game canceled / no action): refund the stake,
+// grade "void" — not counted as a win or loss.
+function voidFight(st,fid){
+  st.positions.forEach(p=>{if(p.fightId!==fid||p.status!=="open")return;
+    const a=st.agents[p.agentId];a.bankroll=r2(a.bankroll+p.stake);a.staked=r2(Math.max(0,a.staked-p.stake));a.openCount=Math.max(0,a.openCount-1);
+    p.status="settled";p.result="void";p.grade="void";p.pnl=0;p.finalScore="Voided — no action";p.settledAt=new Date().toISOString();});
+  st.results[fid]={...(st.results[fid]||{}),voided:true};
+}
+function applyResult(st,fight,res){
+  st.results[fight.id]=res;
+  fight.markets.forEach(mk=>{const w=resolveSide(mk,res);if(w)settleMarket(st,fight.id,mk.key,w)});
+  const fs=scoreString(fight,res);
+  st.positions.forEach(p=>{if(p.fightId===fight.id&&p.status==="settled"&&!p.finalScore)p.finalScore=fs});
+}
+const valOpen=(st,id)=>r2(st.positions.filter(p=>p.agentId===id&&p.status==="open").reduce((s,p)=>s+p.contracts*p.fairProb,0));
+function leaderboard(st){
+  const rows=Object.entries(st.agents).map(([id,a])=>{
+    const ps=st.positions.filter(p=>p.agentId===id);
+    const settledPnl=r2(ps.filter(p=>p.status==="settled").reduce((s,p)=>s+p.pnl,0));
+    const dec=a.wins+a.losses;
+    return{agentId:id,bankroll:a.bankroll,equity:r2(a.bankroll+valOpen(st,id)),totalPnl:settledPnl,
+      roiPct:r2(settledPnl/st.startingBankroll*100),open:a.openCount,settled:a.settledCount,wins:a.wins,losses:a.losses,
+      winRate:dec?r2(a.wins/dec*100):null,staked:a.staked};
+  });
+  rows.sort((x,y)=>y.totalPnl-x.totalPnl||y.equity-x.equity);return rows;
+}
+function fightExposure(st,fid){
+  const ps=st.positions.filter(p=>p.fightId===fid),settled=ps.filter(p=>p.status==="settled");
+  return{staked:r2(ps.reduce((s,p)=>s+p.stake,0)),bets:ps.length,open:ps.filter(p=>p.status==="open").length,
+    settled:settled.length,pnl:r2(settled.reduce((s,p)=>s+p.pnl,0)),decided:settled.length>0};
+}
+// ---- PRIMARY-account stats & records (the bankroll model). Primary = the
+// consensus / funded Kalshi account; the other agents are shadow "books". ----
+const sportLabel=s=>({ufc:"MMA",mls:"Soccer",mlb:"Baseball"}[s]||s);
+const leagueLabel=s=>({ufc:"UFC",mls:"MLS",mlb:"MLB",epl:"EPL",laliga:"La Liga",seriea:"Serie A",bundesliga:"Bundesliga"}[s]||s);
+const primaryBets=st=>st.positions.filter(p=>p.agentId==="consensus");
+function accountStats(st){
+  const R=st.risk||RISK_DEFAULT(),a=st.agents.consensus||{bankroll:st.startingBankroll};
+  const settled=primaryBets(st).filter(p=>p.status==="settled");
+  const dec=settled.filter(p=>p.grade==="win"||p.grade==="loss");
+  const wins=dec.filter(p=>p.grade==="win").length,losses=dec.length-wins;
+  const profit=r2(settled.reduce((s,p)=>s+p.pnl,0)),staked=r2(dec.reduce((s,p)=>s+p.stake,0));
+  const chrono=[...dec].sort((x,y)=>new Date(x.settledAt||0)-new Date(y.settledAt||0));
+  let streak=0,dir="";for(let i=chrono.length-1;i>=0;i--){if(!dir){dir=chrono[i].grade;streak=1}else if(chrono[i].grade===dir)streak++;else break}
+  const clvA=dec.map(p=>p.closingProb-p.price).filter(isFinite);
+  const open=primaryBets(st).filter(p=>p.status==="open");
+  return{start:st.startingBankroll,bankroll:r2(a.bankroll),unitPct:R.unitPct,mode:R.mode,risk:R,
+    unit:r2(a.bankroll*R.unitPct),profit,roi:staked>0?r2(profit/staked*100):0,staked,
+    wins,losses,pushes:settled.filter(p=>p.grade==="push").length,voids:settled.filter(p=>p.grade==="void").length,
+    winPct:dec.length?r2(wins/dec.length*100):null,streak,dir,clv:clvA.length?r2(mean(clvA)*100):null,
+    openCount:open.length,exposure:r2(open.reduce((s,p)=>s+p.stake,0))};
+}
+// Open exposure by sport for the primary account (risk meters).
+function sportExposure(st,sport){return r2(primaryBets(st).filter(p=>p.sport===sport&&p.status==="open").reduce((s,p)=>s+p.stake,0))}
+function recordsBy(st,keyFn){
+  const m={};
+  primaryBets(st).filter(p=>p.status==="settled"&&(p.grade==="win"||p.grade==="loss")).forEach(p=>{
+    const k=keyFn(p);m[k]=m[k]||{w:0,l:0,profit:0,staked:0};if(p.grade==="win")m[k].w++;else m[k].l++;m[k].profit+=p.pnl;m[k].staked+=p.stake});
+  return Object.entries(m).map(([k,v])=>({key:k,w:v.w,l:v.l,profit:r2(v.profit),roi:v.staked>0?r2(v.profit/v.staked*100):0})).sort((a,b)=>b.profit-a.profit);
+}
+// ---- Archive fields, streaks, analytics, automation ----
+const fmtAmerican=p=>{if(!(p>0&&p<1))return"—";const a=p>=.5?-Math.round(p/(1-p)*100):Math.round((1-p)/p*100);return a>0?"+"+a:""+a};
+function buildReason(e){
+  const d=e.detail||{};
+  return `${e.sideName}: model fair ${(e.fairProb*100).toFixed(1)}% vs Kalshi ${(e.kalshiPrice*100).toFixed(1)}% — `+
+    `${(e.edgeRoi*100).toFixed(1)}% edge, ${d.booksAgreeing||0}/${d.booksQuoting||0} books agree, ${e.confidence||0}% confidence.`;
+}
+// A human-readable final score / outcome string from a settled result.
+function scoreString(f,res){
+  if(!res)return"";
+  if(res.voided)return"Voided — no action";
+  if(f.sport==="mls")return res.result?`${res.result==="home"?f.sideA:res.result==="away"?f.sideB:"Draw"}${res.totalGoals!=null?` · ${res.totalGoals} goals`:""}${res.btts!=null?` · BTTS ${res.btts?"Y":"N"}`:""}`:"";
+  if(f.sport==="mlb")return res.winner?`${res.winner==="a"?f.sideA:f.sideB} win${res.margin!=null?` by ${res.margin>=2?"2+":"1"}`:""}${res.totalRuns!=null?` · ${res.totalRuns} runs`:""}`:"";
+  return res.winner?`${res.winner==="a"?f.sideA:f.sideB}${res.method?` by ${res.method==="dec"?"decision":"R"+res.endRound+" finish"}`:""}`:"";
+}
+// Longest win / loss streaks over the primary account's graded history.
+function longestStreaks(st){
+  const dec=primaryBets(st).filter(p=>p.status==="settled"&&(p.grade==="win"||p.grade==="loss"))
+    .sort((x,y)=>new Date(x.settledAt||0)-new Date(y.settledAt||0));
+  let lw=0,ll=0,cw=0,cl=0;
+  dec.forEach(p=>{if(p.grade==="win"){cw++;cl=0}else{cl++;cw=0}lw=Math.max(lw,cw);ll=Math.max(ll,cl)});
+  return{longestWin:lw,longestLoss:ll};
+}
+const DAY=864e5;
+function windowRoi(st,ms){
+  const now=Date.now();
+  const dec=primaryBets(st).filter(p=>p.status==="settled"&&(p.grade==="win"||p.grade==="loss")&&(ms===Infinity||now-new Date(p.settledAt||0).getTime()<=ms));
+  const profit=r2(dec.reduce((s,p)=>s+p.pnl,0)),staked=r2(dec.reduce((s,p)=>s+p.stake,0));
+  return{profit,roi:staked>0?r2(profit/staked*100):null,n:dec.length};
+}
+function avgOdds(st){
+  const dec=primaryBets(st).filter(p=>p.status==="settled");if(!dec.length)return null;
+  return fmtAmerican(mean(dec.map(p=>p.price)));
+}
+// Generic profit/record grouping over the immutable archive (any key function).
+function perfBy(st,keyFn){
+  const m={};
+  primaryBets(st).filter(p=>p.status==="settled").forEach(p=>{
+    const k=keyFn(p);if(k==null)return;m[k]=m[k]||{w:0,l:0,push:0,void:0,profit:0,staked:0};
+    if(p.grade==="win"){m[k].w++;m[k].staked+=p.stake}else if(p.grade==="loss"){m[k].l++;m[k].staked+=p.stake}
+    else if(p.grade==="push")m[k].push++;else m[k].void++;
+    m[k].profit+=p.pnl});
+  return Object.entries(m).map(([k,v])=>({key:k,...v,profit:r2(v.profit),roi:v.staked>0?r2(v.profit/v.staked*100):null,
+    winPct:(v.w+v.l)?r2(v.w/(v.w+v.l)*100):null})).sort((a,b)=>b.profit-a.profit);
+}
+const confTier=c=>c==null?"—":c>=95?"95%+":c>=90?"90-94%":c>=85?"85-89%":"<85%";
+// Daily bankroll snapshot for the equity chart (one point per calendar day).
+function snapshotBankroll(st){
+  const today=new Date().toISOString().slice(0,10),bk=r2((st.agents.consensus||{}).bankroll||st.startingBankroll);
+  st.bankrollHistory=st.bankrollHistory||[{d:today,bk}];
+  const last=st.bankrollHistory[st.bankrollHistory.length-1];
+  if(last.d===today)last.bk=bk;else st.bankrollHistory.push({d:today,bk});
+}
+// Daily P/L series from settled bets (grouped by settle date).
+function dailyPnl(st){
+  const m={};primaryBets(st).filter(p=>p.status==="settled"&&p.settledAt).forEach(p=>{const d=p.settledAt.slice(0,10);m[d]=(m[d]||0)+p.pnl});
+  return Object.entries(m).map(([d,v])=>({d,v:r2(v)})).sort((a,b)=>a.d<b.d?-1:1);
+}
+// ---- automation logs + daily runner ----
+function logAuto(st,msg,kind="info"){(st.logs=st.logs||[]).unshift({ts:new Date().toISOString(),kind,msg});if(st.logs.length>400)st.logs.length=400}
+function offseason(card){return !card||!card.fights||card.fights.length===0}
+// Idempotent daily automation: grade what's decided, recompute, regenerate the
+// slate, snapshot, and write a report + logs. Live score-fetch (auto-grade at
+// 7am) is the deployed-backend piece; here it processes recorded results.
+function runDailyAutomation(st,{force=false}={}){
+  const today=new Date().toISOString().slice(0,10);
+  if(!force&&st.lastAutoDate===today){logAuto(st,`Automation already ran for ${today} — skipped (idempotent).`,"skip");return}
+  logAuto(st,`Daily automation started for ${today}.`,"start");
+  // Step 1-3: settled wagers are already graded via results; archive is automatic
+  // (settled bets live in the Profile layer). Report what settled since last run.
+  const settledToday=primaryBets(st).filter(p=>p.status==="settled"&&(p.settledAt||"").slice(0,10)===today);
+  const gW=settledToday.filter(p=>p.grade==="win").length,gL=settledToday.filter(p=>p.grade==="loss").length,
+    gP=settledToday.filter(p=>p.grade==="push").length,gV=settledToday.filter(p=>p.grade==="void").length;
+  logAuto(st,`Graded ${settledToday.length} wager(s): ${gW}W-${gL}L${gP?` ${gP}P`:""}${gV?` ${gV}V`:""}. Archived to Profile.`,"grade");
+  // Step 4: bankroll & analytics recompute automatically from the ledger.
+  const s=accountStats(st);
+  logAuto(st,`Bankroll ${money(s.bankroll)} · unit ${money(s.unit)} · ROI ${s.roi}% · streak ${s.streak}${(s.dir||"").charAt(0).toUpperCase()}.`,"bankroll");
+  // Step 7: regenerate the slate (offseason-aware) and size stakes off new bankroll.
+  let placed=0,off=[];
+  for(const c of Object.values(CARDS)){
+    if(offseason(c)){off.push(leagueLabel(c.sport));continue}
+    const{confirmed}=confirmCard(analyzeCard(c));
+    confirmed.forEach(e=>{if(placeBet(st,{...e,sport:c.sport}))placed++});
+  }
+  logAuto(st,`Generated today's slate: ${placed} new play(s) sized off current bankroll.`,"slate");
+  if(off.length)logAuto(st,`Offseason (no games): ${off.join(", ")} — tab left empty, no placeholder bets.`,"offseason");
+  // Daily report.
+  (st.reports=st.reports||[]).unshift({date:today,ts:new Date().toISOString(),settled:settledToday.length,
+    w:gW,l:gL,push:gP,void:gV,dayPnl:r2(settledToday.reduce((a,p)=>a+p.pnl,0)),bankroll:s.bankroll,newPlays:placed,offseason:off});
+  if(st.reports.length>120)st.reports.length=120;
+  st.lastAutoDate=today;
+  snapshotBankroll(st);
+  logAuto(st,`Automation complete. Active Bets holds only upcoming wagers.`,"done");
+}
+
+/* ============================ CARDS ============================ */
+// UFC — two-way markets. a/b keyed.
+function F(id,name,slot,sideA,sideB,rounds,winner,finish,ou){return{id,sport:"ufc",league:"ufc",name,slot,sideA,sideB,rounds,markets:[
+  {key:"winner",label:"Winner",type:"winner",a:sideA,b:sideB,...winner},
+  {key:"finish",label:"Finish / Distance",type:"finish",a:"Ends inside distance",b:"Goes the distance",...finish},
+  {key:"ou",label:`Rounds O/U ${ou.line}`,type:"rounds",line:ou.line,a:`Over ${ou.line}`,b:`Under ${ou.line}`,...ou},
+]}}
+// Soccer — three-way match (home/draw/away keyed) + goals O/U + BTTS. The
+// `league` tag (mls/epl/laliga/seriea/bundesliga) rides on the fixture so every
+// wager is attributed to its competition; all soccer shares ONE sport bucket
+// ("mls") so bankroll sizing and the max-sport exposure cap are unchanged.
+function M(id,name,slot,home,away,match,ou,btts,league="mls"){return{id,sport:"mls",league,name,slot,sideA:home,sideB:away,markets:[
+  {key:"match",label:"Match Result (1X2)",type:"match3",
+   sides:[{key:"home",name:home},{key:"draw",name:"Draw"},{key:"away",name:away}],...match},
+  {key:"ou",label:`Goals O/U ${ou.line}`,type:"goals_ou",line:ou.line,a:`Over ${ou.line}`,b:`Under ${ou.line}`,...ou},
+  {key:"btts",label:"Both Teams to Score",type:"btts",a:"BTTS: Yes",b:"BTTS: No",...btts},
+]}}
+
+const UFC_329={
+  sport:"ufc",label:"UFC 329",emoji:"🥊",event:"UFC 329 — McGregor vs. Holloway 2",eventId:"ufc329",
+  date:"2026-07-11",venue:"T-Mobile Arena, Las Vegas",
+  fights:[
+    F("ufc329:mcgregor-holloway","McGregor vs. Holloway","Main Event · Welterweight (5rd)","Conor McGregor","Max Holloway",5,
+      {kalshi:{a:{ask:.41,bid:.38,last:.40,volume:61000},b:{ask:.62,bid:.59,last:.61,volume:78000}},
+       books:{pinnacle:{a:192,b:-230},draftkings:{a:185,b:-225},fanduel:{a:195,b:-235},polymarket:{a:.31,b:.70}}},
+      {kalshi:{a:{ask:.47,bid:.44,last:.46,volume:22000},b:{ask:.55,bid:.52,last:.54,volume:20000}},
+       books:{pinnacle:{a:-125,b:105},draftkings:{a:-120,b:100},fanduel:{a:-130,b:108}}},
+      {line:4.5,kalshi:{a:{ask:.60,bid:.57,last:.59,volume:9000},b:{ask:.44,bid:.41,last:.43,volume:8000}},
+       books:{pinnacle:{a:-150,b:125},draftkings:{a:-145,b:120},fanduel:{a:-155,b:130}}}),
+    F("ufc329:saintdenis-pimblett","Saint Denis vs. Pimblett","Co-Main · Lightweight (3rd)","Benoit Saint Denis","Paddy Pimblett",3,
+      {kalshi:{a:{ask:.53,bid:.50,last:.52,volume:24000},b:{ask:.49,bid:.46,last:.48,volume:31000}},
+       books:{pinnacle:{a:-148,b:124},draftkings:{a:-145,b:120},fanduel:{a:-150,b:125},polymarket:{a:.58,b:.44}}},
+      {kalshi:{a:{ask:.60,bid:.57,last:.59,volume:11000},b:{ask:.42,bid:.39,last:.41,volume:9000}},
+       books:{pinnacle:{a:-160,b:135},draftkings:{a:-155,b:130},fanduel:{a:-165,b:140}}},
+      {line:1.5,kalshi:{a:{ask:.55,bid:.52,last:.54,volume:6000},b:{ask:.48,bid:.45,last:.47,volume:5000}},
+       books:{pinnacle:{a:-140,b:120},draftkings:{a:-135,b:115},fanduel:{a:-145,b:125}}}),
+    F("ufc329:sandhagen-bautista","Sandhagen vs. Bautista","Main Card · Bantamweight (3rd)","Cory Sandhagen","Mario Bautista",3,
+      {kalshi:{a:{ask:.55,bid:.52,last:.54,volume:15000},b:{ask:.48,bid:.45,last:.47,volume:14000}},
+       books:{pinnacle:{a:-130,b:110},draftkings:{a:-128,b:108},fanduel:{a:-132,b:112},polymarket:{a:.55,b:.46}}},
+      {kalshi:{a:{ask:.44,bid:.41,last:.43,volume:8000},b:{ask:.58,bid:.55,last:.57,volume:9000}},
+       books:{pinnacle:{a:105,b:-125},draftkings:{a:108,b:-128},fanduel:{a:102,b:-122}}},
+      {line:2.5,kalshi:{a:{ask:.60,bid:.57,last:.59,volume:5000},b:{ask:.44,bid:.41,last:.43,volume:4000}},
+       books:{pinnacle:{a:-150,b:125},draftkings:{a:-148,b:123},fanduel:{a:-152,b:127}}}),
+    F("ufc329:royval-kavanaugh","Royval vs. Kavanaugh","Main Card · Flyweight (3rd)","Brandon Royval","Lone'er Kavanaugh",3,
+      {kalshi:{a:{ask:.56,bid:.50,last:.55,volume:700},b:{ask:.47,bid:.41,last:.45,volume:600}},
+       books:{pinnacle:{a:-175,b:150},draftkings:{a:-138,b:118},fanduel:{a:-240,b:195},polymarket:{a:.59,b:.43}}},
+      {kalshi:{a:{ask:.58,bid:.52,last:.57,volume:800},b:{ask:.44,bid:.38,last:.43,volume:700}},
+       books:{pinnacle:{a:-150,b:130},draftkings:{a:-120,b:100},fanduel:{a:-185,b:155}}},
+      {line:1.5,kalshi:{a:{ask:.52,bid:.46,last:.51,volume:600},b:{ask:.50,bid:.44,last:.49,volume:500}},
+       books:{pinnacle:{a:-130,b:110},draftkings:{a:-110,b:-110},fanduel:{a:-160,b:135}}}),
+    F("ufc329:green-mckinney","Green vs. McKinney","Main Card · Lightweight (3rd)","King Green","Terrance McKinney",3,
+      {kalshi:{a:{ask:.51,bid:.48,last:.50,volume:9000},b:{ask:.52,bid:.49,last:.51,volume:11000}},
+       books:{pinnacle:{a:112,b:-134},draftkings:{a:105,b:-130},fanduel:{a:120,b:-148},polymarket:{a:.45,b:.56}}},
+      {kalshi:{a:{ask:.70,bid:.66,last:.69,volume:16000},b:{ask:.28,bid:.25,last:.27,volume:9000}},
+       books:{pinnacle:{a:-360,b:280},draftkings:{a:-330,b:260},fanduel:{a:-400,b:300}}},
+      {line:1.5,kalshi:{a:{ask:.30,bid:.27,last:.29,volume:6000},b:{ask:.72,bid:.69,last:.71,volume:15000}},
+       books:{pinnacle:{a:330,b:-420},draftkings:{a:300,b:-380},fanduel:{a:350,b:-460}}}),
+  ],
+};
+
+const MLS_JUL17={
+  sport:"mls",label:"MLS · Fri Jul 17",emoji:"⚽",event:"MLS — Friday, July 17 (El Tráfico headlines)",eventId:"mls-2026-07-17",
+  date:"2026-07-17",venue:"Major League Soccer",
+  fights:[
+    // El Tráfico (27th edition) — derby rivalry, and Kalshi underprices the DRAW
+    // (the outcome models most often underrate). Flagship.
+    M("mls:lag-lafc","LA Galaxy vs. LAFC","Fri Jul 17 · Dignity Health Sports Park","LA Galaxy","LAFC",
+      {kalshi:{home:{ask:.38,bid:.35,last:.37,volume:14000},draw:{ask:.24,bid:.21,last:.23,volume:10000},away:{ask:.40,bid:.37,last:.39,volume:15000}},
+       books:{pinnacle:{home:160,draw:235,away:160},draftkings:{home:158,draw:240,away:158},fanduel:{home:162,draw:230,away:162},polymarket:{home:.35,draw:.28,away:.37}}},
+      {line:2.5,kalshi:{a:{ask:.56,bid:.53,last:.55,volume:7000},b:{ask:.47,bid:.44,last:.46,volume:6000}},
+       books:{pinnacle:{a:-135,b:112},draftkings:{a:-130,b:108},fanduel:{a:-140,b:116}}},
+      {kalshi:{a:{ask:.58,bid:.55,last:.57,volume:5000},b:{ask:.46,bid:.43,last:.45,volume:4000}},
+       books:{pinnacle:{a:-140,b:118},draftkings:{a:-135,b:114},fanduel:{a:-145,b:122}}}),
+
+    // Efficiently priced — should produce NO edge (discipline check).
+    M("mls:nsh-atl","Nashville SC vs. Atlanta United","Fri Jul 17 · Geodis Park","Nashville SC","Atlanta United",
+      {kalshi:{home:{ask:.55,bid:.52,last:.54,volume:7000},draw:{ask:.29,bid:.26,last:.28,volume:4000},away:{ask:.25,bid:.22,last:.24,volume:6000}},
+       books:{pinnacle:{home:-130,draw:250,away:320},draftkings:{home:-128,draw:255,away:330},fanduel:{home:-132,draw:245,away:310}}},
+      {line:2.5,kalshi:{a:{ask:.53,bid:.50,last:.52,volume:5000},b:{ask:.51,bid:.48,last:.50,volume:4000}},
+       books:{pinnacle:{a:-115,b:-105},draftkings:{a:-112,b:-108},fanduel:{a:-118,b:-102}}},
+      {kalshi:{a:{ask:.55,bid:.52,last:.54,volume:4000},b:{ask:.49,bid:.46,last:.48,volume:3500}},
+       books:{pinnacle:{a:-125,b:105},draftkings:{a:-128,b:108},fanduel:{a:-122,b:102}}}),
+
+    // Canadian Classique — Kalshi underprices the DRAW (rivalry games draw more).
+    M("mls:mtl-tor","CF Montréal vs. Toronto FC","Fri Jul 17 · Stade Saputo","CF Montréal","Toronto FC",
+      {kalshi:{home:{ask:.44,bid:.41,last:.43,volume:8000},draw:{ask:.24,bid:.21,last:.23,volume:7000},away:{ask:.34,bid:.31,last:.33,volume:6000}},
+       books:{pinnacle:{home:130,draw:250,away:210},draftkings:{home:128,draw:255,away:205},fanduel:{home:135,draw:245,away:215},polymarket:{home:.43,draw:.275,away:.295}}},
+      {line:2.5,kalshi:{a:{ask:.55,bid:.52,last:.54,volume:5000},b:{ask:.49,bid:.46,last:.48,volume:4000}},
+       books:{pinnacle:{a:-120,b:100},draftkings:{a:-118,b:-102},fanduel:{a:-122,b:102}}},
+      {kalshi:{a:{ask:.55,bid:.52,last:.54,volume:4000},b:{ask:.49,bid:.46,last:.48,volume:3500}},
+       books:{pinnacle:{a:-125,b:105},draftkings:{a:-128,b:108},fanduel:{a:-122,b:102}}}),
+
+    // Cascadia rivalry — Kalshi underprices the OVER 2.5 (high-scoring rivalry).
+    M("mls:sea-por","Seattle vs. Portland","Fri Jul 17 · Lumen Field","Seattle Sounders","Portland Timbers",
+      {kalshi:{home:{ask:.52,bid:.49,last:.51,volume:9000},draw:{ask:.29,bid:.26,last:.28,volume:5000},away:{ask:.26,bid:.23,last:.25,volume:6000}},
+       books:{pinnacle:{home:-115,draw:255,away:295},draftkings:{home:-110,draw:260,away:300},fanduel:{home:-120,draw:250,away:285}}},
+      {line:2.5,kalshi:{a:{ask:.535,bid:.50,last:.52,volume:9000},b:{ask:.49,bid:.46,last:.48,volume:8000}},
+       books:{pinnacle:{a:-150,b:125},draftkings:{a:-145,b:118},fanduel:{a:-155,b:130}}},
+      {kalshi:{a:{ask:.56,bid:.53,last:.55,volume:4000},b:{ask:.48,bid:.45,last:.47,volume:3500}},
+       books:{pinnacle:{a:-140,b:118},draftkings:{a:-135,b:114},fanduel:{a:-145,b:122}}}),
+
+    // Kalshi underprices the home side (St. Louis) vs the book consensus.
+    M("mls:stl-skc","St. Louis CITY vs. Sporting KC","Fri Jul 17 · Energizer Park","St. Louis CITY","Sporting KC",
+      {kalshi:{home:{ask:.50,bid:.47,last:.49,volume:8000},draw:{ask:.28,bid:.25,last:.27,volume:4000},away:{ask:.27,bid:.24,last:.26,volume:6000}},
+       books:{pinnacle:{home:-135,draw:255,away:340},draftkings:{home:-130,draw:260,away:330},fanduel:{home:-140,draw:250,away:350}}},
+      {line:2.5,kalshi:{a:{ask:.53,bid:.50,last:.52,volume:5000},b:{ask:.51,bid:.48,last:.50,volume:4000}},
+       books:{pinnacle:{a:-110,b:-110},draftkings:{a:-108,b:-112},fanduel:{a:-112,b:-108}}},
+      {kalshi:{a:{ask:.52,bid:.49,last:.51,volume:4000},b:{ask:.52,bid:.49,last:.51,volume:3500}},
+       books:{pinnacle:{a:-115,b:-105},draftkings:{a:-112,b:-108},fanduel:{a:-118,b:-102}}}),
+    // Chicago Fire vs. Vancouver Whitecaps — CANCELED; removed from the slate.
+    // Any open paper bets on it are auto-voided and refunded on load (migrate()).
+  ],
+};
+
+// MLB — two-way markets: moneyline + run line (±1.5) + runs O/U. away @ home.
+function MB(id,name,slot,away,home,ml,rl,ou){
+  const favName=rl.favSide==="a"?away:home, dogName=rl.favSide==="a"?home:away;
+  return{id,sport:"mlb",league:"mlb",name,slot,sideA:away,sideB:home,markets:[
+    {key:"ml",label:"Moneyline",type:"winner",a:away,b:home,...ml},
+    {key:"rl",label:"Run Line ±1.5",type:"runline",a:`${favName} -1.5`,b:`${dogName} +1.5`,...rl},
+    {key:"ou",label:`Runs O/U ${ou.line}`,type:"runs_ou",line:ou.line,a:`Over ${ou.line}`,b:`Under ${ou.line}`,...ou},
+  ]};
+}
+// Past MLB slates are ARCHIVED, not deleted: games that already happened stay
+// resolvable and in the ledger. They produce no new edges/bets, but their open
+// bets remain settleable (they show in the settle list) and their settled bets
+// stay in the books (positions history). This is how a canceled game (deleted)
+// differs from a completed one (archived).
+const MLB_ARCHIVE=[
+  MB("mlb:mil-pit","Brewers @ Pirates","Sun Jul 12 · PNC Park (Skenes)","Milwaukee Brewers","Pittsburgh Pirates",
+    {kalshi:{a:{ask:.44,bid:.41,last:.43,volume:8000},b:{ask:.58,bid:.55,last:.57,volume:10000}},
+     books:{pinnacle:{a:118,b:-138},draftkings:{a:115,b:-135},fanduel:{a:120,b:-140}}},
+    {favSide:"b",kalshi:{a:{ask:.40,bid:.37,last:.39,volume:4000},b:{ask:.63,bid:.60,last:.62,volume:4000}},
+     books:{pinnacle:{a:130,b:-155},draftkings:{a:128,b:-152},fanduel:{a:132,b:-158}}},
+    {line:7.5,kalshi:{a:{ask:.51,bid:.48,last:.50,volume:6000},b:{ask:.52,bid:.49,last:.51,volume:9000}},
+     books:{pinnacle:{a:118,b:-140},draftkings:{a:115,b:-135},fanduel:{a:122,b:-145}}}),
+  MB("mlb:nyy-wsh","Yankees @ Nationals","Sun Jul 12 · Nationals Park","New York Yankees","Washington Nationals",
+    {kalshi:{a:{ask:.56,bid:.53,last:.55,volume:12000},b:{ask:.46,bid:.43,last:.45,volume:9000}},
+     books:{pinnacle:{a:-178,b:150},draftkings:{a:-175,b:148},fanduel:{a:-180,b:152}}},
+    {favSide:"a",kalshi:{a:{ask:.46,bid:.43,last:.45,volume:4000},b:{ask:.57,bid:.54,last:.56,volume:4000}},
+     books:{pinnacle:{a:105,b:-125},draftkings:{a:102,b:-122},fanduel:{a:108,b:-128}}},
+    {line:9,kalshi:{a:{ask:.52,bid:.49,last:.51,volume:5000},b:{ask:.50,bid:.47,last:.49,volume:5000}},
+     books:{pinnacle:{a:-105,b:-115},draftkings:{a:-108,b:-112},fanduel:{a:-102,b:-118}}}),
+  MB("mlb:kc-bal","Royals @ Orioles","Sun Jul 12 · Camden Yards","Kansas City Royals","Baltimore Orioles",
+    {kalshi:{a:{ask:.47,bid:.44,last:.46,volume:7000},b:{ask:.55,bid:.52,last:.54,volume:8000}},
+     books:{pinnacle:{a:104,b:-124},draftkings:{a:102,b:-122},fanduel:{a:106,b:-126}}},
+    {favSide:"b",kalshi:{a:{ask:.42,bid:.39,last:.41,volume:3000},b:{ask:.61,bid:.58,last:.60,volume:3000}},
+     books:{pinnacle:{a:135,b:-160},draftkings:{a:132,b:-158},fanduel:{a:138,b:-162}}},
+    {line:8.5,kalshi:{a:{ask:.52,bid:.49,last:.51,volume:4000},b:{ask:.50,bid:.47,last:.49,volume:4000}},
+     books:{pinnacle:{a:-108,b:-112},draftkings:{a:-110,b:-110},fanduel:{a:-106,b:-114}}}),
+  MB("mlb:tor-sd","Blue Jays @ Padres","Sun Jul 12 · Petco Park","Toronto Blue Jays","San Diego Padres",
+    {kalshi:{a:{ask:.52,bid:.49,last:.51,volume:7000},b:{ask:.51,bid:.48,last:.50,volume:9000}},
+     books:{pinnacle:{a:112,b:-132},draftkings:{a:110,b:-130},fanduel:{a:114,b:-134}}},
+    {favSide:"b",kalshi:{a:{ask:.43,bid:.40,last:.42,volume:3000},b:{ask:.60,bid:.57,last:.59,volume:3000}},
+     books:{pinnacle:{a:128,b:-152},draftkings:{a:125,b:-148},fanduel:{a:130,b:-155}}},
+    {line:8,kalshi:{a:{ask:.52,bid:.49,last:.51,volume:4000},b:{ask:.50,bid:.47,last:.49,volume:4000}},
+     books:{pinnacle:{a:-110,b:-110},draftkings:{a:-108,b:-112},fanduel:{a:-112,b:-108}}}),
+];
+
+// Active MLB slate — Wednesday, June 17 2026, full 14-game board. Run lines are
+// clean across the board; edges are placed on a handful of ML/totals markets.
+// Shared run-line block (a = favorite -1.5, b = underdog +1.5); only favSide changes.
+const RL=fav=>({favSide:fav,kalshi:{a:{ask:.43,bid:.40,last:.42,volume:3000},b:{ask:.60,bid:.57,last:.59,volume:3000}},
+  books:{pinnacle:{a:130,b:-155},draftkings:{a:128,b:-152},fanduel:{a:132,b:-158}}});
+// Efficient totals block (no edge).
+const OUE=line=>({line,kalshi:{a:{ask:.53,bid:.50,last:.52,volume:4000},b:{ask:.52,bid:.49,last:.51,volume:4000}},
+  books:{pinnacle:{a:-110,b:-110},draftkings:{a:-108,b:-112},fanduel:{a:-112,b:-108}}});
+// Efficient moneyline blocks by favorite (kalshi priced at/above fair -> no edge).
+const MLh=()=>({kalshi:{a:{ask:.46,bid:.43,last:.45,volume:7000},b:{ask:.57,bid:.54,last:.56,volume:8000}},
+  books:{pinnacle:{a:112,b:-132},draftkings:{a:110,b:-130},fanduel:{a:114,b:-134}}});            // home fav ~-132
+const MLhBig=()=>({kalshi:{a:{ask:.39,bid:.36,last:.38,volume:7000},b:{ask:.64,bid:.61,last:.63,volume:9000}},
+  books:{pinnacle:{a:150,b:-178},draftkings:{a:148,b:-175},fanduel:{a:152,b:-180}}});             // home big fav ~-178
+const MLhSm=()=>({kalshi:{a:{ask:.48,bid:.45,last:.47,volume:7000},b:{ask:.55,bid:.52,last:.54,volume:8000}},
+  books:{pinnacle:{a:102,b:-120},draftkings:{a:100,b:-118},fanduel:{a:104,b:-122}}});             // home slight fav ~-120
+const MLaEff=()=>({kalshi:{a:{ask:.57,bid:.54,last:.56,volume:8000},b:{ask:.45,bid:.42,last:.44,volume:7000}},
+  books:{pinnacle:{a:-125,b:105},draftkings:{a:-122,b:102},fanduel:{a:-128,b:108}}});             // away fav ~-125 (priced)
+const MLB_JUN17={
+  sport:"mlb",label:"MLB · Wed Jun 17",emoji:"⚾",event:"MLB — Wednesday, June 17 (full 14-game slate)",eventId:"mlb-2026-06-17",
+  date:"2026-06-17",venue:"Major League Baseball",
+  fights:[
+    MB("mlb:tb-bos","Rays vs. Red Sox","Wed Jun 17 · Fenway Park","Tampa Bay Rays","Boston Red Sox",MLh(),RL("b"),OUE(9)),
+
+    // Kalshi underprices the Dodgers (road favorite) vs the book consensus. Edge.
+    MB("mlb:lad-nyy","Dodgers vs. Yankees","Wed Jun 17 · Yankee Stadium","Los Angeles Dodgers","New York Yankees",
+      {kalshi:{a:{ask:.54,bid:.51,last:.53,volume:15000},b:{ask:.48,bid:.45,last:.47,volume:12000}},
+       books:{pinnacle:{a:-150,b:128},draftkings:{a:-148,b:125},fanduel:{a:-152,b:130}}},RL("a"),OUE(8.5)),
+
+    MB("mlb:pit-cle","Pirates vs. Guardians","Wed Jun 17 · Progressive Field","Pittsburgh Pirates","Cleveland Guardians",MLh(),RL("b"),OUE(8)),
+    MB("mlb:cws-tor","White Sox vs. Blue Jays","Wed Jun 17 · Rogers Centre","Chicago White Sox","Toronto Blue Jays",MLhBig(),RL("b"),OUE(8.5)),
+
+    // Kalshi underprices the Braves (home favorite) vs the book consensus. Edge.
+    MB("mlb:tex-atl","Rangers vs. Braves","Wed Jun 17 · Truist Park","Texas Rangers","Atlanta Braves",
+      {kalshi:{a:{ask:.50,bid:.47,last:.49,volume:9000},b:{ask:.52,bid:.49,last:.51,volume:11000}},
+       books:{pinnacle:{a:118,b:-140},draftkings:{a:115,b:-138},fanduel:{a:120,b:-142}}},RL("b"),OUE(8.5)),
+
+    MB("mlb:mia-mil","Marlins vs. Brewers","Wed Jun 17 · American Family Field","Miami Marlins","Milwaukee Brewers",MLh(),RL("b"),OUE(8)),
+    MB("mlb:min-chc","Twins vs. Cubs","Wed Jun 17 · Wrigley Field","Minnesota Twins","Chicago Cubs",MLhSm(),RL("b"),OUE(8.5)),
+    MB("mlb:sd-kc","Padres vs. Royals","Wed Jun 17 · Kauffman Stadium","San Diego Padres","Kansas City Royals",MLaEff(),RL("a"),OUE(8)),
+
+    // Kalshi underprices the Astros (home favorite) vs the book consensus. Edge.
+    MB("mlb:bal-hou","Orioles vs. Astros","Wed Jun 17 · Daikin Park","Baltimore Orioles","Houston Astros",
+      {kalshi:{a:{ask:.51,bid:.48,last:.50,volume:9000},b:{ask:.51,bid:.48,last:.50,volume:11000}},
+       books:{pinnacle:{a:115,b:-135},draftkings:{a:112,b:-132},fanduel:{a:118,b:-138}}},RL("b"),OUE(8.5)),
+
+    // Coors Field — Kalshi underprices the OVER (park factor). Edge.
+    MB("mlb:cin-col","Reds vs. Rockies","Wed Jun 17 · Coors Field","Cincinnati Reds","Colorado Rockies",
+      {kalshi:{a:{ask:.54,bid:.51,last:.53,volume:8000},b:{ask:.52,bid:.49,last:.51,volume:8000}},
+       books:{pinnacle:{a:-115,b:-105},draftkings:{a:-112,b:-108},fanduel:{a:-118,b:-102}}},RL("a"),
+      {line:11.5,kalshi:{a:{ask:.53,bid:.50,last:.52,volume:9000},b:{ask:.50,bid:.47,last:.49,volume:7000}},
+       books:{pinnacle:{a:-150,b:125},draftkings:{a:-145,b:118},fanduel:{a:-155,b:130}}}),
+
+    // Skubal on the mound — Kalshi underprices the UNDER (ace). Edge.
+    MB("mlb:det-laa","Tigers vs. Angels","Wed Jun 17 · Angel Stadium","Detroit Tigers","Los Angeles Angels",
+      {kalshi:{a:{ask:.59,bid:.56,last:.58,volume:9000},b:{ask:.43,bid:.40,last:.42,volume:7000}},
+       books:{pinnacle:{a:-140,b:118},draftkings:{a:-138,b:115},fanduel:{a:-142,b:120}}},RL("a"),
+      {line:8,kalshi:{a:{ask:.50,bid:.47,last:.49,volume:7000},b:{ask:.52,bid:.49,last:.51,volume:9000}},
+       books:{pinnacle:{a:120,b:-145},draftkings:{a:118,b:-142},fanduel:{a:122,b:-148}}}),
+
+    MB("mlb:wsh-ath","Nationals vs. Athletics","Wed Jun 17 · Sutter Health Park","Washington Nationals","Athletics",MLhSm(),RL("b"),OUE(9)),
+    MB("mlb:stl-ari","Cardinals vs. D-backs","Wed Jun 17 · Chase Field","St. Louis Cardinals","Arizona Diamondbacks",MLh(),RL("b"),OUE(9)),
+    MB("mlb:sf-sea","Giants vs. Mariners","Wed Jun 17 · T-Mobile Park","San Francisco Giants","Seattle Mariners",MLh(),RL("b"),OUE(7.5)),
+  ],
+};
+
+// ===== RETIRED SLATES (archived — kept resolvable & in the books) =====
+// UFC — Sat Jul 18 2026, UFC Fight Night: Du Plessis vs. Usman (Oklahoma City).
+const UFC_JUL18={
+  sport:"ufc",label:"UFC · Sat Jul 18",emoji:"🥊",event:"UFC Fight Night — Du Plessis vs. Usman",eventId:"ufc-2026-07-18",
+  date:"2026-07-18",venue:"Paycom Center, Oklahoma City",
+  fights:[
+    // Usman never finished + DDP is a grinder — Kalshi underprices GOES THE DISTANCE. Flagship.
+    F("ufcokc:duplessis-usman","Du Plessis vs. Usman","Main Event · Middleweight (5rd)","Dricus Du Plessis","Kamaru Usman",5,
+      {kalshi:{a:{ask:.72,bid:.69,last:.71,volume:40000},b:{ask:.31,bid:.28,last:.30,volume:30000}},
+       books:{pinnacle:{a:-260,b:215},draftkings:{a:-255,b:210},fanduel:{a:-265,b:220}}},
+      {kalshi:{a:{ask:.48,bid:.45,last:.47,volume:15000},b:{ask:.53,bid:.50,last:.52,volume:14000}},
+       books:{pinnacle:{a:135,b:-160},draftkings:{a:132,b:-158},fanduel:{a:138,b:-162}}},
+      {line:4.5,kalshi:{a:{ask:.58,bid:.55,last:.57,volume:9000},b:{ask:.46,bid:.43,last:.45,volume:8000}},
+       books:{pinnacle:{a:-150,b:125},draftkings:{a:-145,b:120},fanduel:{a:-155,b:130}}}),
+    F("ufcokc:cannonier-duncan","Cannonier vs. Duncan","Co-Main · Middleweight (3rd)","Jared Cannonier","Christian Leroy Duncan",3,
+      {kalshi:{a:{ask:.52,bid:.49,last:.51,volume:12000},b:{ask:.50,bid:.47,last:.49,volume:11000}},
+       books:{pinnacle:{a:-115,b:-105},draftkings:{a:-112,b:-108},fanduel:{a:-118,b:-102}}},
+      {kalshi:{a:{ask:.55,bid:.52,last:.54,volume:6000},b:{ask:.48,bid:.45,last:.47,volume:5000}},
+       books:{pinnacle:{a:-125,b:105},draftkings:{a:-128,b:108},fanduel:{a:-122,b:102}}},
+      {line:1.5,kalshi:{a:{ask:.55,bid:.52,last:.54,volume:5000},b:{ask:.49,bid:.46,last:.48,volume:4000}},
+       books:{pinnacle:{a:-120,b:100},draftkings:{a:-118,b:-102},fanduel:{a:-122,b:102}}}),
+    // Hooper is a submission finisher — Kalshi underprices ENDS INSIDE DISTANCE.
+    F("ufcokc:hooper-ramirez","Hooper vs. Ramirez","Main Card · Lightweight (3rd)","Chase Hooper","Mitch Ramirez",3,
+      {kalshi:{a:{ask:.66,bid:.63,last:.65,volume:10000},b:{ask:.37,bid:.34,last:.36,volume:8000}},
+       books:{pinnacle:{a:-200,b:170},draftkings:{a:-195,b:165},fanduel:{a:-205,b:172}}},
+      {kalshi:{a:{ask:.55,bid:.52,last:.54,volume:9000},b:{ask:.44,bid:.41,last:.43,volume:7000}},
+       books:{pinnacle:{a:-165,b:140},draftkings:{a:-160,b:135},fanduel:{a:-170,b:145}}},
+      {line:1.5,kalshi:{a:{ask:.55,bid:.52,last:.54,volume:5000},b:{ask:.49,bid:.46,last:.48,volume:4000}},
+       books:{pinnacle:{a:-120,b:100},draftkings:{a:-118,b:-102},fanduel:{a:-122,b:102}}}),
+    F("ufcokc:mcmillen-montes","McMillen vs. Montes","Main Card · Bantamweight (3rd)","Tommy McMillen","Alberto Montes",3,
+      {kalshi:{a:{ask:.57,bid:.54,last:.56,volume:7000},b:{ask:.45,bid:.42,last:.44,volume:6000}},
+       books:{pinnacle:{a:-135,b:115},draftkings:{a:-132,b:112},fanduel:{a:-138,b:118}}},
+      {kalshi:{a:{ask:.55,bid:.52,last:.54,volume:5000},b:{ask:.48,bid:.45,last:.47,volume:4000}},
+       books:{pinnacle:{a:-125,b:105},draftkings:{a:-128,b:108},fanduel:{a:-122,b:102}}},
+      {line:1.5,kalshi:{a:{ask:.55,bid:.52,last:.54,volume:5000},b:{ask:.49,bid:.46,last:.48,volume:4000}},
+       books:{pinnacle:{a:-120,b:100},draftkings:{a:-118,b:-102},fanduel:{a:-122,b:102}}}),
+  ],
+};
+
+// MLS — Wed Jul 22 2026, Matchday 18 (6 games).
+const MLS_JUL22={
+  sport:"mls",label:"MLS · Wed Jul 22",emoji:"⚽",event:"MLS — Wednesday, July 22 (Matchday 18)",eventId:"mls-2026-07-22",
+  date:"2026-07-22",venue:"Major League Soccer",
+  fights:[
+    // Cincinnati strong at home — Kalshi underprices the HOME side. Edge.
+    M("mls:cin-van","FC Cincinnati vs. Vancouver","Wed Jul 22 · TQL Stadium","FC Cincinnati","Vancouver Whitecaps",
+      {kalshi:{home:{ask:.52,bid:.49,last:.51,volume:9000},draw:{ask:.28,bid:.25,last:.27,volume:4000},away:{ask:.26,bid:.23,last:.25,volume:6000}},
+       books:{pinnacle:{home:-140,draw:260,away:360},draftkings:{home:-138,draw:255,away:350},fanduel:{home:-142,draw:265,away:370}}},
+      {line:2.5,kalshi:{a:{ask:.53,bid:.50,last:.52,volume:5000},b:{ask:.51,bid:.48,last:.50,volume:4000}},
+       books:{pinnacle:{a:-115,b:-105},draftkings:{a:-112,b:-108},fanduel:{a:-118,b:-102}}},
+      {kalshi:{a:{ask:.55,bid:.52,last:.54,volume:4000},b:{ask:.49,bid:.46,last:.48,volume:3500}},
+       books:{pinnacle:{a:-120,b:100},draftkings:{a:-118,b:-102},fanduel:{a:-122,b:102}}}),
+    M("mls:lag-stl","LA Galaxy vs. St. Louis CITY","Wed Jul 22 · Dignity Health Sports Park","LA Galaxy","St. Louis CITY",
+      {kalshi:{home:{ask:.55,bid:.52,last:.54,volume:8000},draw:{ask:.30,bid:.27,last:.29,volume:4000},away:{ask:.26,bid:.23,last:.25,volume:6000}},
+       books:{pinnacle:{home:-120,draw:250,away:320},draftkings:{home:-118,draw:255,away:330},fanduel:{home:-122,draw:245,away:310}}},
+      {line:2.5,kalshi:{a:{ask:.55,bid:.52,last:.54,volume:5000},b:{ask:.49,bid:.46,last:.48,volume:4000}},
+       books:{pinnacle:{a:-125,b:105},draftkings:{a:-128,b:108},fanduel:{a:-122,b:102}}},
+      {kalshi:{a:{ask:.55,bid:.52,last:.54,volume:4000},b:{ask:.49,bid:.46,last:.48,volume:3500}},
+       books:{pinnacle:{a:-125,b:105},draftkings:{a:-128,b:108},fanduel:{a:-122,b:102}}}),
+    // Turnpike rivalry — Kalshi underprices the OVER 2.5. Edge.
+    M("mls:phi-rbny","Philadelphia vs. NY Red Bulls","Wed Jul 22 · Subaru Park","Philadelphia Union","New York Red Bulls",
+      {kalshi:{home:{ask:.57,bid:.54,last:.56,volume:8000},draw:{ask:.27,bid:.24,last:.26,volume:4000},away:{ask:.24,bid:.21,last:.23,volume:6000}},
+       books:{pinnacle:{home:-135,draw:255,away:340},draftkings:{home:-130,draw:260,away:330},fanduel:{home:-140,draw:250,away:350}}},
+      {line:2.5,kalshi:{a:{ask:.53,bid:.50,last:.52,volume:6000},b:{ask:.50,bid:.47,last:.49,volume:5000}},
+       books:{pinnacle:{a:-150,b:125},draftkings:{a:-145,b:118},fanduel:{a:-155,b:130}}},
+      {kalshi:{a:{ask:.56,bid:.53,last:.55,volume:4000},b:{ask:.48,bid:.45,last:.47,volume:3500}},
+       books:{pinnacle:{a:-140,b:118},draftkings:{a:-135,b:114},fanduel:{a:-145,b:122}}}),
+    M("mls:ne-tor","New England vs. Toronto FC","Wed Jul 22 · Gillette Stadium","New England Revolution","Toronto FC",
+      {kalshi:{home:{ask:.53,bid:.50,last:.52,volume:7000},draw:{ask:.29,bid:.26,last:.28,volume:4000},away:{ask:.27,bid:.24,last:.26,volume:6000}},
+       books:{pinnacle:{home:-125,draw:250,away:330},draftkings:{home:-122,draw:255,away:320},fanduel:{home:-128,draw:245,away:340}}},
+      {line:2.5,kalshi:{a:{ask:.55,bid:.52,last:.54,volume:5000},b:{ask:.49,bid:.46,last:.48,volume:4000}},
+       books:{pinnacle:{a:-120,b:100},draftkings:{a:-118,b:-102},fanduel:{a:-122,b:102}}},
+      {kalshi:{a:{ask:.55,bid:.52,last:.54,volume:4000},b:{ask:.49,bid:.46,last:.48,volume:3500}},
+       books:{pinnacle:{a:-125,b:105},draftkings:{a:-128,b:108},fanduel:{a:-122,b:102}}}),
+    // Kalshi underprices the DRAW (models underrate draws). Edge.
+    M("mls:clb-nyc","Columbus vs. NYCFC","Wed Jul 22 · Lower.com Field","Columbus Crew","New York City FC",
+      {kalshi:{home:{ask:.40,bid:.37,last:.39,volume:9000},draw:{ask:.24,bid:.21,last:.23,volume:7000},away:{ask:.38,bid:.35,last:.37,volume:8000}},
+       books:{pinnacle:{home:120,draw:240,away:200},draftkings:{home:118,draw:245,away:195},fanduel:{home:122,draw:235,away:205},polymarket:{home:.38,draw:.28,away:.34}}},
+      {line:2.5,kalshi:{a:{ask:.55,bid:.52,last:.54,volume:5000},b:{ask:.49,bid:.46,last:.48,volume:4000}},
+       books:{pinnacle:{a:-120,b:100},draftkings:{a:-118,b:-102},fanduel:{a:-122,b:102}}},
+      {kalshi:{a:{ask:.55,bid:.52,last:.54,volume:4000},b:{ask:.49,bid:.46,last:.48,volume:3500}},
+       books:{pinnacle:{a:-125,b:105},draftkings:{a:-128,b:108},fanduel:{a:-122,b:102}}}),
+    M("mls:skc-min","Sporting KC vs. Minnesota","Wed Jul 22 · Children's Mercy Park","Sporting KC","Minnesota United",
+      {kalshi:{home:{ask:.52,bid:.49,last:.51,volume:7000},draw:{ask:.29,bid:.26,last:.28,volume:4000},away:{ask:.28,bid:.25,last:.27,volume:6000}},
+       books:{pinnacle:{home:-115,draw:250,away:300},draftkings:{home:-112,draw:255,away:295},fanduel:{home:-118,draw:245,away:305}}},
+      {line:2.5,kalshi:{a:{ask:.55,bid:.52,last:.54,volume:5000},b:{ask:.49,bid:.46,last:.48,volume:4000}},
+       books:{pinnacle:{a:-120,b:100},draftkings:{a:-118,b:-102},fanduel:{a:-122,b:102}}},
+      {kalshi:{a:{ask:.55,bid:.52,last:.54,volume:4000},b:{ask:.49,bid:.46,last:.48,volume:3500}},
+       books:{pinnacle:{a:-125,b:105},draftkings:{a:-128,b:108},fanduel:{a:-122,b:102}}}),
+  ],
+};
+
+// MLB — Sun Jul 19 2026, full slate incl. a Dodgers/Yankees doubleheader.
+const MLB_JUL19={
+  sport:"mlb",label:"MLB · Sun Jul 19",emoji:"⚾",event:"MLB — Sunday, July 19 (full slate)",eventId:"mlb-2026-07-19",
+  date:"2026-07-19",venue:"Major League Baseball",
+  fights:[
+    MB("mlb:0719:cws-tor","White Sox vs. Blue Jays","Sun Jul 19 · Rogers Centre","Chicago White Sox","Toronto Blue Jays",MLhBig(),RL("b"),OUE(8.5)),
+    // Kalshi underprices the Dodgers (road favorite). Edge.
+    MB("mlb:0719:lad-nyy","Dodgers vs. Yankees (G1)","Sun Jul 19 · Yankee Stadium","Los Angeles Dodgers","New York Yankees",
+      {kalshi:{a:{ask:.54,bid:.51,last:.53,volume:15000},b:{ask:.48,bid:.45,last:.47,volume:12000}},
+       books:{pinnacle:{a:-150,b:128},draftkings:{a:-148,b:125},fanduel:{a:-152,b:130}}},RL("a"),OUE(8.5)),
+    MB("mlb:0719:tb-bos","Rays vs. Red Sox","Sun Jul 19 · Fenway Park","Tampa Bay Rays","Boston Red Sox",MLh(),RL("b"),OUE(9)),
+    MB("mlb:0719:nym-phi","Mets vs. Phillies","Sun Jul 19 · Citizens Bank Park","New York Mets","Philadelphia Phillies",MLh(),RL("b"),OUE(8.5)),
+    // Kalshi underprices the Braves (home favorite). Edge.
+    MB("mlb:0719:tex-atl","Rangers vs. Braves","Sun Jul 19 · Truist Park","Texas Rangers","Atlanta Braves",
+      {kalshi:{a:{ask:.50,bid:.47,last:.49,volume:9000},b:{ask:.52,bid:.49,last:.51,volume:11000}},
+       books:{pinnacle:{a:118,b:-140},draftkings:{a:115,b:-138},fanduel:{a:120,b:-142}}},RL("b"),OUE(8.5)),
+    MB("mlb:0719:pit-cle","Pirates vs. Guardians","Sun Jul 19 · Progressive Field","Pittsburgh Pirates","Cleveland Guardians",MLh(),RL("b"),OUE(8)),
+    // Kalshi underprices the Astros (home favorite). Edge.
+    MB("mlb:0719:bal-hou","Orioles vs. Astros","Sun Jul 19 · Daikin Park","Baltimore Orioles","Houston Astros",
+      {kalshi:{a:{ask:.51,bid:.48,last:.50,volume:9000},b:{ask:.51,bid:.48,last:.50,volume:11000}},
+       books:{pinnacle:{a:115,b:-135},draftkings:{a:112,b:-132},fanduel:{a:118,b:-138}}},RL("b"),OUE(8.5)),
+    MB("mlb:0719:sd-kc","Padres vs. Royals","Sun Jul 19 · Kauffman Stadium","San Diego Padres","Kansas City Royals",MLaEff(),RL("a"),OUE(8)),
+    MB("mlb:0719:mia-mil","Marlins vs. Brewers","Sun Jul 19 · American Family Field","Miami Marlins","Milwaukee Brewers",MLh(),RL("b"),OUE(8)),
+    MB("mlb:0719:min-chc","Twins vs. Cubs","Sun Jul 19 · Wrigley Field","Minnesota Twins","Chicago Cubs",MLhSm(),RL("b"),OUE(8.5)),
+    // Coors Field — Kalshi underprices the OVER. Edge.
+    MB("mlb:0719:cin-col","Reds vs. Rockies","Sun Jul 19 · Coors Field","Cincinnati Reds","Colorado Rockies",
+      {kalshi:{a:{ask:.54,bid:.51,last:.53,volume:8000},b:{ask:.52,bid:.49,last:.51,volume:8000}},
+       books:{pinnacle:{a:-115,b:-105},draftkings:{a:-112,b:-108},fanduel:{a:-118,b:-102}}},RL("a"),
+      {line:11.5,kalshi:{a:{ask:.53,bid:.50,last:.52,volume:9000},b:{ask:.50,bid:.47,last:.49,volume:7000}},
+       books:{pinnacle:{a:-150,b:125},draftkings:{a:-145,b:118},fanduel:{a:-155,b:130}}}),
+    MB("mlb:0719:wsh-ath","Nationals vs. Athletics","Sun Jul 19 · Sutter Health Park","Washington Nationals","Athletics",MLhSm(),RL("b"),OUE(9)),
+    // Skubal on the mound — Kalshi underprices the UNDER. Edge.
+    MB("mlb:0719:det-laa","Tigers vs. Angels","Sun Jul 19 · Angel Stadium","Detroit Tigers","Los Angeles Angels",
+      {kalshi:{a:{ask:.59,bid:.56,last:.58,volume:9000},b:{ask:.43,bid:.40,last:.42,volume:7000}},
+       books:{pinnacle:{a:-140,b:118},draftkings:{a:-138,b:115},fanduel:{a:-142,b:120}}},RL("a"),
+      {line:8,kalshi:{a:{ask:.50,bid:.47,last:.49,volume:7000},b:{ask:.52,bid:.49,last:.51,volume:9000}},
+       books:{pinnacle:{a:120,b:-145},draftkings:{a:118,b:-142},fanduel:{a:122,b:-148}}}),
+    MB("mlb:0719:sf-sea","Giants vs. Mariners","Sun Jul 19 · T-Mobile Park","San Francisco Giants","Seattle Mariners",MLh(),RL("b"),OUE(7.5)),
+    MB("mlb:0719:lad-nyy-g2","Dodgers vs. Yankees (G2)","Sun Jul 19 · Yankee Stadium (DH)","Los Angeles Dodgers","New York Yankees",MLh(),RL("b"),OUE(8.5)),
+  ],
+};
+
+// ===== ACTIVE SLATES — week of Mon Aug 24 2026 =====
+// UFC — Sat Aug 29 2026, UFC Fight Night: Nurmagomedov vs. Song (UFC Shanghai),
+// SPD Bank Oriental Sports Center, Shanghai. Real card (main/co-main + undercard).
+const UFC={
+  sport:"ufc",label:"UFC · Sat Aug 29",emoji:"🥊",event:"UFC Fight Night — Nurmagomedov vs. Song (Shanghai)",eventId:"ufc-2026-08-29",
+  date:"2026-08-29",venue:"SPD Bank Oriental Sports Center, Shanghai",
+  fights:[
+    // Umar is an undefeated grinder who's never finished a durable Song — Kalshi
+    // underprices GOES THE DISTANCE. Flagship. Umar heavy favorite.
+    F("ufcsha:umar-song","Nurmagomedov vs. Song","Main Event · Bantamweight (5rd)","Umar Nurmagomedov","Song Yadong",5,
+      {kalshi:{a:{ask:.74,bid:.71,last:.73,volume:42000},b:{ask:.29,bid:.26,last:.28,volume:33000}},
+       books:{pinnacle:{a:-300,b:245},draftkings:{a:-295,b:240},fanduel:{a:-305,b:250}}},
+      {kalshi:{a:{ask:.46,bid:.43,last:.45,volume:16000},b:{ask:.55,bid:.52,last:.54,volume:15000}},
+       books:{pinnacle:{a:140,b:-165},draftkings:{a:135,b:-160},fanduel:{a:145,b:-170}}},
+      {line:4.5,kalshi:{a:{ask:.57,bid:.54,last:.56,volume:9000},b:{ask:.47,bid:.44,last:.46,volume:8000}},
+       books:{pinnacle:{a:-150,b:125},draftkings:{a:-145,b:120},fanduel:{a:-155,b:130}}}),
+    F("ufcsha:yan-gomes","Yan vs. Gomes","Co-Main · Women's Strawweight (3rd)","Yan Xiaonan","Denise Gomes",3,
+      {kalshi:{a:{ask:.66,bid:.63,last:.65,volume:13000},b:{ask:.36,bid:.33,last:.35,volume:11000}},
+       books:{pinnacle:{a:-205,b:172},draftkings:{a:-200,b:168},fanduel:{a:-210,b:175}}},
+      {kalshi:{a:{ask:.55,bid:.52,last:.54,volume:6000},b:{ask:.48,bid:.45,last:.47,volume:5000}},
+       books:{pinnacle:{a:-125,b:105},draftkings:{a:-128,b:108},fanduel:{a:-122,b:102}}},
+      {line:1.5,kalshi:{a:{ask:.55,bid:.52,last:.54,volume:5000},b:{ask:.49,bid:.46,last:.48,volume:4000}},
+       books:{pinnacle:{a:-120,b:100},draftkings:{a:-118,b:-102},fanduel:{a:-122,b:102}}}),
+    // Asakura is an explosive finisher — Kalshi underprices ENDS INSIDE DISTANCE.
+    F("ufcsha:aoriqileng-asakura","Aoriqileng vs. Asakura","Main Card · Bantamweight (3rd)","Aoriqileng","Kai Asakura",3,
+      {kalshi:{a:{ask:.47,bid:.44,last:.46,volume:9000},b:{ask:.55,bid:.52,last:.54,volume:11000}},
+       books:{pinnacle:{a:110,b:-130},draftkings:{a:108,b:-128},fanduel:{a:112,b:-132}}},
+      {kalshi:{a:{ask:.62,bid:.59,last:.61,volume:9000},b:{ask:.40,bid:.37,last:.39,volume:7000}},
+       books:{pinnacle:{a:-185,b:158},draftkings:{a:-180,b:152},fanduel:{a:-190,b:162}}},
+      {line:1.5,kalshi:{a:{ask:.55,bid:.52,last:.54,volume:5000},b:{ask:.49,bid:.46,last:.48,volume:4000}},
+       books:{pinnacle:{a:-120,b:100},draftkings:{a:-118,b:-102},fanduel:{a:-122,b:102}}}),
+    F("ufcsha:nuzzi-xiaolong","Nuzzi vs. Xiao Long","Main Card · Bantamweight (3rd)","Francesco Nuzzi","Xiao Long",3,
+      {kalshi:{a:{ask:.53,bid:.50,last:.52,volume:6000},b:{ask:.49,bid:.46,last:.48,volume:6000}},
+       books:{pinnacle:{a:-120,b:100},draftkings:{a:-118,b:-102},fanduel:{a:-122,b:102}}},
+      {kalshi:{a:{ask:.55,bid:.52,last:.54,volume:5000},b:{ask:.48,bid:.45,last:.47,volume:4000}},
+       books:{pinnacle:{a:-125,b:105},draftkings:{a:-128,b:108},fanduel:{a:-122,b:102}}},
+      {line:1.5,kalshi:{a:{ask:.55,bid:.52,last:.54,volume:5000},b:{ask:.49,bid:.46,last:.48,volume:4000}},
+       books:{pinnacle:{a:-120,b:100},draftkings:{a:-118,b:-102},fanduel:{a:-122,b:102}}}),
+  ],
+};
+
+// Representative soccer odds builders (same three-way de-vig the engine already
+// uses). Edge builders make Kalshi underprice one outcome vs the book consensus;
+// the others are efficiently priced (discipline checks — no edge).
+const MX_HOME_EDGE=()=>({kalshi:{home:{ask:.52,bid:.49,last:.51,volume:9000},draw:{ask:.28,bid:.25,last:.27,volume:4000},away:{ask:.26,bid:.23,last:.25,volume:6000}},
+  books:{pinnacle:{home:-140,draw:260,away:360},draftkings:{home:-138,draw:255,away:350},fanduel:{home:-142,draw:265,away:370}}});   // Kalshi underprices HOME
+const MX_DRAW_EDGE=()=>({kalshi:{home:{ask:.40,bid:.37,last:.39,volume:9000},draw:{ask:.24,bid:.21,last:.23,volume:7000},away:{ask:.38,bid:.35,last:.37,volume:8000}},
+  books:{pinnacle:{home:120,draw:240,away:200},draftkings:{home:118,draw:245,away:195},fanduel:{home:122,draw:235,away:205}}});     // Kalshi underprices DRAW
+const MX_AWAY_EDGE=()=>({kalshi:{home:{ask:.26,bid:.23,last:.25,volume:6000},draw:{ask:.28,bid:.25,last:.27,volume:4000},away:{ask:.52,bid:.49,last:.51,volume:9000}},
+  books:{pinnacle:{home:360,draw:260,away:-140},draftkings:{home:350,draw:255,away:-138},fanduel:{home:370,draw:265,away:-142}}});   // Kalshi underprices AWAY fav
+const MX_HOMEBIG=()=>({kalshi:{home:{ask:.66,bid:.63,last:.65,volume:9000},draw:{ask:.22,bid:.19,last:.21,volume:4000},away:{ask:.16,bid:.13,last:.15,volume:5000}},
+  books:{pinnacle:{home:-220,draw:320,away:600},draftkings:{home:-215,draw:315,away:580},fanduel:{home:-225,draw:325,away:620}}});   // strong home fav, priced (no edge)
+const MX_AWAY=()=>({kalshi:{home:{ask:.24,bid:.21,last:.23,volume:6000},draw:{ask:.26,bid:.23,last:.25,volume:4000},away:{ask:.55,bid:.52,last:.54,volume:9000}},
+  books:{pinnacle:{home:340,draw:270,away:-125},draftkings:{home:330,draw:265,away:-122},fanduel:{home:350,draw:275,away:-128}}});   // away fav, priced (no edge)
+const MX_EFF=()=>({kalshi:{home:{ask:.55,bid:.52,last:.54,volume:8000},draw:{ask:.30,bid:.27,last:.29,volume:4000},away:{ask:.26,bid:.23,last:.25,volume:6000}},
+  books:{pinnacle:{home:-120,draw:250,away:320},draftkings:{home:-118,draw:255,away:330},fanduel:{home:-122,draw:245,away:310}}});   // balanced, priced (no edge)
+const S_OU=over=>over
+  ?{line:2.5,kalshi:{a:{ask:.53,bid:.50,last:.52,volume:6000},b:{ask:.50,bid:.47,last:.49,volume:5000}},books:{pinnacle:{a:-150,b:125},draftkings:{a:-145,b:118},fanduel:{a:-155,b:130}}}   // Kalshi underprices OVER 2.5
+  :{line:2.5,kalshi:{a:{ask:.55,bid:.52,last:.54,volume:5000},b:{ask:.49,bid:.46,last:.48,volume:4000}},books:{pinnacle:{a:-120,b:100},draftkings:{a:-118,b:-102},fanduel:{a:-122,b:102}}};   // efficient
+const S_BTTS=()=>({kalshi:{a:{ask:.55,bid:.52,last:.54,volume:4000},b:{ask:.49,bid:.46,last:.48,volume:3500}},books:{pinnacle:{a:-125,b:105},draftkings:{a:-128,b:108},fanduel:{a:-122,b:102}}});
+
+// SOCCER — weekend of Aug 29–31 2026 across five leagues (MLS + EPL, La Liga,
+// Serie A, Bundesliga). One sport bucket ("mls"), each fixture tagged by league.
+const MLS={
+  sport:"mls",label:"Soccer · Aug 29–31 · 5 leagues",emoji:"⚽",event:"Soccer — Aug 29–31 weekend (MLS · EPL · La Liga · Serie A · Bundesliga)",eventId:"soccer-2026-08-29",
+  date:"2026-08-29",venue:"Multiple leagues",
+  fights:[
+    // ---- MLS ----
+    // Miami strong at home behind Messi — Kalshi underprices the HOME side. Edge.
+    M("mls:mia-nsh","Inter Miami vs. Nashville SC","Sat Aug 29 · Chase Stadium","Inter Miami","Nashville SC",
+      {kalshi:{home:{ask:.55,bid:.52,last:.54,volume:12000},draw:{ask:.28,bid:.25,last:.27,volume:5000},away:{ask:.24,bid:.21,last:.23,volume:7000}},
+       books:{pinnacle:{home:-150,draw:265,away:380},draftkings:{home:-148,draw:260,away:370},fanduel:{home:-152,draw:270,away:390},polymarket:{home:.57,draw:.27,away:.22}}},
+      {line:2.5,kalshi:{a:{ask:.55,bid:.52,last:.54,volume:6000},b:{ask:.49,bid:.46,last:.48,volume:5000}},
+       books:{pinnacle:{a:-140,b:118},draftkings:{a:-135,b:114},fanduel:{a:-145,b:122}}},
+      {kalshi:{a:{ask:.56,bid:.53,last:.55,volume:4000},b:{ask:.48,bid:.45,last:.47,volume:3500}},
+       books:{pinnacle:{a:-140,b:118},draftkings:{a:-135,b:114},fanduel:{a:-145,b:122}}}),
+    M("mls:lafc-sea","LAFC vs. Seattle Sounders","Sat Aug 29 · BMO Stadium","LAFC","Seattle Sounders",
+      {kalshi:{home:{ask:.53,bid:.50,last:.52,volume:8000},draw:{ask:.29,bid:.26,last:.28,volume:4000},away:{ask:.27,bid:.24,last:.26,volume:6000}},
+       books:{pinnacle:{home:-125,draw:250,away:330},draftkings:{home:-122,draw:255,away:320},fanduel:{home:-128,draw:245,away:340}}},
+      {line:2.5,kalshi:{a:{ask:.55,bid:.52,last:.54,volume:5000},b:{ask:.49,bid:.46,last:.48,volume:4000}},
+       books:{pinnacle:{a:-125,b:105},draftkings:{a:-128,b:108},fanduel:{a:-122,b:102}}},
+      {kalshi:{a:{ask:.55,bid:.52,last:.54,volume:4000},b:{ask:.49,bid:.46,last:.48,volume:3500}},
+       books:{pinnacle:{a:-125,b:105},draftkings:{a:-128,b:108},fanduel:{a:-122,b:102}}}),
+    // Hell is Real derby — Kalshi underprices the OVER 2.5 (high-scoring rivalry). Edge.
+    M("mls:cin-clb","FC Cincinnati vs. Columbus Crew","Sat Aug 29 · TQL Stadium","FC Cincinnati","Columbus Crew",
+      {kalshi:{home:{ask:.44,bid:.41,last:.43,volume:9000},draw:{ask:.27,bid:.24,last:.26,volume:5000},away:{ask:.32,bid:.29,last:.31,volume:7000}},
+       books:{pinnacle:{home:120,draw:245,away:210},draftkings:{home:118,draw:250,away:205},fanduel:{home:122,draw:240,away:215}}},
+      {line:2.5,kalshi:{a:{ask:.53,bid:.50,last:.52,volume:6000},b:{ask:.50,bid:.47,last:.49,volume:5000}},
+       books:{pinnacle:{a:-150,b:125},draftkings:{a:-145,b:118},fanduel:{a:-155,b:130}}},
+      {kalshi:{a:{ask:.56,bid:.53,last:.55,volume:4000},b:{ask:.48,bid:.45,last:.47,volume:3500}},
+       books:{pinnacle:{a:-140,b:118},draftkings:{a:-135,b:114},fanduel:{a:-145,b:122}}}),
+    M("mls:nyc-clt","NYCFC vs. Charlotte FC","Sat Aug 29 · Yankee Stadium","New York City FC","Charlotte FC",
+      {kalshi:{home:{ask:.54,bid:.51,last:.53,volume:7000},draw:{ask:.29,bid:.26,last:.28,volume:4000},away:{ask:.26,bid:.23,last:.25,volume:6000}},
+       books:{pinnacle:{home:-125,draw:250,away:330},draftkings:{home:-122,draw:255,away:320},fanduel:{home:-128,draw:245,away:340}}},
+      {line:2.5,kalshi:{a:{ask:.55,bid:.52,last:.54,volume:5000},b:{ask:.49,bid:.46,last:.48,volume:4000}},
+       books:{pinnacle:{a:-120,b:100},draftkings:{a:-118,b:-102},fanduel:{a:-122,b:102}}},
+      {kalshi:{a:{ask:.55,bid:.52,last:.54,volume:4000},b:{ask:.49,bid:.46,last:.48,volume:3500}},
+       books:{pinnacle:{a:-125,b:105},draftkings:{a:-128,b:108},fanduel:{a:-122,b:102}}}),
+    // Copa Tejas — Kalshi underprices the DRAW (tight, physical rivalry). Edge.
+    M("mls:atx-hou","Austin FC vs. Houston Dynamo","Sat Aug 29 · Q2 Stadium","Austin FC","Houston Dynamo",
+      {kalshi:{home:{ask:.42,bid:.39,last:.41,volume:8000},draw:{ask:.24,bid:.21,last:.23,volume:7000},away:{ask:.36,bid:.33,last:.35,volume:7000}},
+       books:{pinnacle:{home:125,draw:240,away:205},draftkings:{home:122,draw:245,away:200},fanduel:{home:128,draw:235,away:210},polymarket:{home:.41,draw:.28,away:.33}}},
+      {line:2.5,kalshi:{a:{ask:.55,bid:.52,last:.54,volume:5000},b:{ask:.49,bid:.46,last:.48,volume:4000}},
+       books:{pinnacle:{a:-120,b:100},draftkings:{a:-118,b:-102},fanduel:{a:-122,b:102}}},
+      {kalshi:{a:{ask:.55,bid:.52,last:.54,volume:4000},b:{ask:.49,bid:.46,last:.48,volume:3500}},
+       books:{pinnacle:{a:-125,b:105},draftkings:{a:-128,b:108},fanduel:{a:-122,b:102}}}),
+    M("mls:min-skc","Minnesota United vs. Sporting KC","Sat Aug 29 · Allianz Field","Minnesota United","Sporting KC",
+      {kalshi:{home:{ask:.53,bid:.50,last:.52,volume:7000},draw:{ask:.29,bid:.26,last:.28,volume:4000},away:{ask:.27,bid:.24,last:.26,volume:6000}},
+       books:{pinnacle:{home:-120,draw:250,away:320},draftkings:{home:-118,draw:255,away:330},fanduel:{home:-122,draw:245,away:310}}},
+      {line:2.5,kalshi:{a:{ask:.55,bid:.52,last:.54,volume:5000},b:{ask:.49,bid:.46,last:.48,volume:4000}},
+       books:{pinnacle:{a:-120,b:100},draftkings:{a:-118,b:-102},fanduel:{a:-122,b:102}}},
+      {kalshi:{a:{ask:.55,bid:.52,last:.54,volume:4000},b:{ask:.49,bid:.46,last:.48,volume:3500}},
+       books:{pinnacle:{a:-125,b:105},draftkings:{a:-128,b:108},fanduel:{a:-122,b:102}}}),
+
+    // ---- EPL (Matchweek 2) ----
+    M("epl:liv-nfo","Liverpool vs. Nottingham Forest","EPL · Sat Aug 29 · Anfield","Liverpool","Nottingham Forest",MX_HOMEBIG(),S_OU(false),S_BTTS(),"epl"),
+    // Kalshi underprices the DRAW. Edge.
+    M("epl:tot-new","Tottenham vs. Newcastle","EPL · Sat Aug 29 · Tottenham Hotspur Stadium","Tottenham Hotspur","Newcastle United",MX_DRAW_EDGE(),S_OU(false),S_BTTS(),"epl"),
+    // Kalshi underprices the HOME side. Edge.
+    M("epl:che-bha","Chelsea vs. Brighton","EPL · Sun Aug 30 · Stamford Bridge","Chelsea","Brighton & Hove Albion",MX_HOME_EDGE(),S_OU(false),S_BTTS(),"epl"),
+    M("epl:mun-ips","Man United vs. Ipswich","EPL · Sun Aug 30 · Old Trafford","Manchester United","Ipswich Town",MX_HOMEBIG(),S_OU(false),S_BTTS(),"epl"),
+    // Man City road favorite; Kalshi underprices the OVER 2.5. Edge.
+    M("epl:cry-mci","Crystal Palace vs. Man City","EPL · Fri Aug 28 · Selhurst Park","Crystal Palace","Manchester City",MX_AWAY(),S_OU(true),S_BTTS(),"epl"),
+
+    // ---- La Liga (Jornada 3) ----
+    M("laliga:bar-ray","Barcelona vs. Rayo Vallecano","La Liga · Mon Aug 31 · Spotify Camp Nou","Barcelona","Rayo Vallecano",MX_HOMEBIG(),S_OU(false),S_BTTS(),"laliga"),
+    // Kalshi underprices the HOME side. Edge.
+    M("laliga:rma-rso","Real Madrid vs. Real Sociedad","La Liga · Sat Aug 29 · Santiago Bernabéu","Real Madrid","Real Sociedad",MX_HOME_EDGE(),S_OU(false),S_BTTS(),"laliga"),
+    M("laliga:atm-vil","Atlético Madrid vs. Villarreal","La Liga · Sat Aug 29 · Metropolitano","Atlético Madrid","Villarreal",MX_EFF(),S_OU(false),S_BTTS(),"laliga"),
+    // Seville derby — Kalshi underprices the DRAW. Edge.
+    M("laliga:sev-bet","Sevilla vs. Real Betis","La Liga · Sun Aug 30 · Ramón Sánchez-Pizjuán","Sevilla","Real Betis",MX_DRAW_EDGE(),S_OU(false),S_BTTS(),"laliga"),
+    M("laliga:val-ath","Valencia vs. Athletic Club","La Liga · Sun Aug 30 · Mestalla","Valencia","Athletic Club",MX_EFF(),S_OU(false),S_BTTS(),"laliga"),
+
+    // ---- Serie A (Giornata 2) ----
+    M("seriea:nap-com","Napoli vs. Como","Serie A · Sun Aug 30 · Diego Armando Maradona","Napoli","Como",MX_HOMEBIG(),S_OU(false),S_BTTS(),"seriea"),
+    // Kalshi underprices the HOME side. Edge.
+    M("seriea:laz-gen","Lazio vs. Genoa","Serie A · Sun Aug 30 · Stadio Olimpico","Lazio","Genoa",MX_HOME_EDGE(),S_OU(false),S_BTTS(),"seriea"),
+    // Inter big road favorite — Kalshi underprices the AWAY side. Edge.
+    M("seriea:cag-int","Cagliari vs. Inter Milan","Serie A · Sun Aug 30 · Unipol Domus","Cagliari","Inter Milan",MX_AWAY_EDGE(),S_OU(false),S_BTTS(),"seriea"),
+    M("seriea:lec-rom","Lecce vs. Roma","Serie A · Mon Aug 31 · Stadio Via del Mare","Lecce","Roma",MX_AWAY(),S_OU(false),S_BTTS(),"seriea"),
+    // Atalanta's attack — Kalshi underprices the OVER 2.5. Edge.
+    M("seriea:ata-bol","Atalanta vs. Bologna","Serie A · Mon Aug 31 · Gewiss Stadium","Atalanta","Bologna",MX_EFF(),S_OU(true),S_BTTS(),"seriea"),
+
+    // ---- Bundesliga (Matchday 1) ----
+    // Kalshi underprices the HOME side. Edge.
+    M("bundesliga:dor-ham","Dortmund vs. Hamburger SV","Bundesliga · Sat Aug 29 · Signal Iduna Park","Borussia Dortmund","Hamburger SV",MX_HOME_EDGE(),S_OU(false),S_BTTS(),"bundesliga"),
+    M("bundesliga:rbl-bmg","RB Leipzig vs. Gladbach","Bundesliga · Sat Aug 29 · Red Bull Arena","RB Leipzig","Borussia M'gladbach",MX_EFF(),S_OU(false),S_BTTS(),"bundesliga"),
+    // Kalshi underprices the DRAW. Edge.
+    M("bundesliga:fcu-sge","Union Berlin vs. Eintracht Frankfurt","Bundesliga · Sat Aug 29 · An der Alten Försterei","Union Berlin","Eintracht Frankfurt",MX_DRAW_EDGE(),S_OU(false),S_BTTS(),"bundesliga"),
+    M("bundesliga:koe-hof","Köln vs. Hoffenheim","Bundesliga · Sat Aug 29 · RheinEnergieStadion","FC Köln","1899 Hoffenheim",MX_EFF(),S_OU(false),S_BTTS(),"bundesliga"),
+    M("bundesliga:elv-lev","Elversberg vs. Leverkusen","Bundesliga · Sat Aug 29 · Ursapharm-Arena","SV Elversberg","Bayer Leverkusen",MX_AWAY(),S_OU(false),S_BTTS(),"bundesliga"),
+  ],
+};
+
+// MLB — Tue Aug 25 2026 (today), full 14-game slate. Real matchups.
+const MLB={
+  sport:"mlb",label:"MLB · Tue Aug 25",emoji:"⚾",event:"MLB — Tuesday, August 25 (full slate)",eventId:"mlb-2026-08-25",
+  date:"2026-08-25",venue:"Major League Baseball",
+  fights:[
+    MB("mlb:0825:tb-det","Rays vs. Tigers","Tue Aug 25 · Comerica Park","Tampa Bay Rays","Detroit Tigers",MLh(),RL("b"),OUE(8.5)),
+    MB("mlb:0825:bos-mia","Red Sox vs. Marlins","Tue Aug 25 · loanDepot Park","Boston Red Sox","Miami Marlins",MLaEff(),RL("a"),OUE(8.5)),
+    MB("mlb:0825:col-wsh","Rockies vs. Nationals","Tue Aug 25 · Nationals Park","Colorado Rockies","Washington Nationals",MLhSm(),RL("b"),OUE(9)),
+    // Kalshi underprices the Yankees (home favorite) vs the book consensus. Edge.
+    MB("mlb:0825:hou-nyy","Astros vs. Yankees","Tue Aug 25 · Yankee Stadium","Houston Astros","New York Yankees",
+      {kalshi:{a:{ask:.50,bid:.47,last:.49,volume:12000},b:{ask:.52,bid:.49,last:.51,volume:14000}},
+       books:{pinnacle:{a:116,b:-138},draftkings:{a:114,b:-136},fanduel:{a:118,b:-140}}},RL("b"),OUE(8.5)),
+    MB("mlb:0825:kc-tor","Royals vs. Blue Jays","Tue Aug 25 · Rogers Centre","Kansas City Royals","Toronto Blue Jays",MLhBig(),RL("b"),OUE(8.5)),
+    MB("mlb:0825:mil-nym","Brewers vs. Mets","Tue Aug 25 · Citi Field","Milwaukee Brewers","New York Mets",MLh(),RL("b"),OUE(8)),
+    // Kalshi underprices the Dodgers (road favorite) vs the book consensus. Edge.
+    MB("mlb:0825:lad-atl","Dodgers vs. Braves","Tue Aug 25 · Truist Park","Los Angeles Dodgers","Atlanta Braves",
+      {kalshi:{a:{ask:.54,bid:.51,last:.53,volume:15000},b:{ask:.48,bid:.45,last:.47,volume:12000}},
+       books:{pinnacle:{a:-150,b:128},draftkings:{a:-148,b:125},fanduel:{a:-152,b:130}}},RL("a"),OUE(8.5)),
+    MB("mlb:0825:tex-cws","Rangers vs. White Sox","Tue Aug 25 · Rate Field","Texas Rangers","Chicago White Sox",MLaEff(),RL("a"),OUE(8.5)),
+    MB("mlb:0825:bal-stl","Orioles vs. Cardinals","Tue Aug 25 · Busch Stadium","Baltimore Orioles","St. Louis Cardinals",MLh(),RL("b"),OUE(8.5)),
+    MB("mlb:0825:cle-laa","Guardians vs. Angels","Tue Aug 25 · Angel Stadium","Cleveland Guardians","Los Angeles Angels",MLhSm(),RL("b"),OUE(8.5)),
+    // Chase Field roof/park — efficient totals; no edge.
+    MB("mlb:0825:chc-ari","Cubs vs. D-backs","Tue Aug 25 · Chase Field","Chicago Cubs","Arizona Diamondbacks",MLaEff(),RL("a"),OUE(9)),
+    MB("mlb:0825:pit-sd","Pirates vs. Padres","Tue Aug 25 · Petco Park","Pittsburgh Pirates","San Diego Padres",MLhBig(),RL("b"),OUE(7.5)),
+    // Sacramento heat / small park — Kalshi underprices the OVER. Edge.
+    MB("mlb:0825:min-ath","Twins vs. Athletics","Tue Aug 25 · Sutter Health Park","Minnesota Twins","Athletics",
+      {kalshi:{a:{ask:.54,bid:.51,last:.53,volume:8000},b:{ask:.52,bid:.49,last:.51,volume:8000}},
+       books:{pinnacle:{a:-115,b:-105},draftkings:{a:-112,b:-108},fanduel:{a:-118,b:-102}}},RL("a"),
+      {line:9.5,kalshi:{a:{ask:.53,bid:.50,last:.52,volume:9000},b:{ask:.50,bid:.47,last:.49,volume:7000}},
+       books:{pinnacle:{a:-150,b:125},draftkings:{a:-145,b:118},fanduel:{a:-155,b:130}}}),
+    // Mariners' arms at T-Mobile — Kalshi underprices the UNDER. Edge.
+    MB("mlb:0825:phi-sea","Phillies vs. Mariners","Tue Aug 25 · T-Mobile Park","Philadelphia Phillies","Seattle Mariners",
+      {kalshi:{a:{ask:.49,bid:.46,last:.48,volume:9000},b:{ask:.53,bid:.50,last:.52,volume:11000}},
+       books:{pinnacle:{a:108,b:-128},draftkings:{a:105,b:-125},fanduel:{a:110,b:-130}}},RL("b"),
+      {line:7.5,kalshi:{a:{ask:.50,bid:.47,last:.49,volume:7000},b:{ask:.52,bid:.49,last:.51,volume:9000}},
+       books:{pinnacle:{a:120,b:-145},draftkings:{a:118,b:-142},fanduel:{a:122,b:-148}}}),
+  ],
+};
+
+const CARDS={ufc:UFC,mls:MLS,mlb:MLB};
+// Completed slates are archived (kept resolvable & in the ledger); their settled
+// bets stay in the books and any open bets remain settleable.
+const ARCHIVE={
+  ufc:[...UFC_329.fights,...UFC_JUL18.fights],
+  mls:[...MLS_JUL17.fights,...MLS_JUL22.fights],
+  mlb:[...MLB_ARCHIVE,...MLB_JUN17.fights,...MLB_JUL19.fights],
+};
+
+/* ============================ RENDER ============================ */
+// STABLE storage key — never bump this again. Schema changes are handled by
+// migrate() in place, so adding a league / market / agent is additive and your
+// progress (bets, settled P&L) is preserved across updates.
+const KEY="kalshi_edge_finder_state";
+const LEGACY_KEYS=["kalshi_edge_finder_multisport_v3","kalshi_edge_finder_multisport_v2","kalshi_edge_finder_multisport_v1"];
+const pct=(x,d=1)=>isFinite(x)?(x*100).toFixed(d)+"%":"—";
+const money=x=>(x<0?"-":"")+"$"+Math.abs(x).toFixed(2);
+const $=id=>document.getElementById(id);
+const aColor=id=>id==="consensus"?"#e8a44a":srcById(id).color;
+const mktClass=t=>({winner:"mkt-winner",match3:"mkt-winner",finish:"mkt-finish",rounds:"mkt-rounds",goals_ou:"mkt-rounds",runs_ou:"mkt-rounds",runline:"mkt-runline",btts:"mkt-btts"}[t]||"mkt-winner");
+let filter="all", leagueFilter="all", activeSport=localStorage.getItem(KEY+"_sport")||localStorage.getItem("kalshi_edge_finder_multisport_v3_sport")||"ufc";
+let state=migrate(load());
+function activeCard(){return CARDS[activeSport]}
+function fightById(fid){
+  for(const c of Object.values(CARDS)){const f=c.fights.find(x=>x.id===fid);if(f)return f}
+  for(const arr of Object.values(ARCHIVE)){const f=arr.find(x=>x.id===fid);if(f)return f} // completed games stay resolvable
+  return null;
+}
+// Load the stable save; on first run after this change, carry over the most
+// recent legacy (versioned) save so nothing already done is lost.
+function load(){
+  const read=k=>{try{const s=JSON.parse(localStorage.getItem(k));return s&&s.agents?s:null}catch(e){return null}};
+  let s=read(KEY);
+  if(!s)for(const k of LEGACY_KEYS){s=read(k);if(s)break}
+  return s;
+}
+// Bring a saved account up to the current schema WITHOUT wiping it. Everything
+// here is additive: new agents get a fresh $1,000, missing fields get defaults,
+// and settled results / realized P&L are never touched.
+function migrate(s){
+  if(!s)return initLedger(agentIds());
+  s.startingBankroll=s.startingBankroll||START;
+  s.positions=s.positions||[];
+  s.results=s.results||{};
+  s.agents=s.agents||{};
+  for(const id of agentIds())if(!s.agents[id])s.agents[id]={bankroll:START,staked:0,openCount:0,settledCount:0,wins:0,losses:0};
+  s.risk=s.risk||RISK_DEFAULT();
+  s.logs=s.logs||[];s.reports=s.reports||[];s.bankrollHistory=s.bankrollHistory||[];
+  // Backfill new per-bet fields on older saves (grade, closing-price proxy, archive fields).
+  s.positions.forEach(p=>{
+    if(p.closingProb==null)p.closingProb=p.fairProb;
+    if(p.grade==null&&p.status==="settled")p.grade=p.result;
+    if(p.notes==null)p.notes="";
+    if(p.reason==null)p.reason="";
+  });
+  // Void still-OPEN bets on fixtures that no longer exist (a removed market can
+  // never settle) — refund the paper stake. Settled bets are kept as history.
+  s.positions=s.positions.filter(p=>{
+    if(p.status!=="open"||fightById(p.fightId))return true;
+    const a=s.agents[p.agentId];
+    if(a){a.bankroll=r2(a.bankroll+p.stake);a.staked=r2(Math.max(0,a.staked-p.stake));a.openCount=Math.max(0,a.openCount-1)}
+    return false;
+  });
+  s.positions.forEach(p=>{if(p.sport==null){const f=fightById(p.fightId);p.sport=f?f.sport:"ufc"}});
+  // Backfill league on older saves (pre-multi-league): resolve from the fixture,
+  // else fall back to the sport code (legacy soccer bets become "mls").
+  s.positions.forEach(p=>{if(p.league==null){const f=fightById(p.fightId);p.league=f&&f.league?f.league:p.sport}});
+  return s;
+}
+function save(){localStorage.setItem(KEY,JSON.stringify(state))}
+
+// Scan + place bets for BOTH sports so P&L accrues regardless of the open tab.
+function rescanAll(){for(const c of Object.values(CARDS)){const{confirmed}=confirmCard(analyzeCard(c));confirmed.forEach(e=>placeBet(state,{...e,sport:c.sport}))}save()}
+
+const VIEWS=[["active","Active Bets"],["profile","Profile"],["bankroll","Bankroll"],["analytics","Analytics"],["reports","Daily Reports"],["books","Bookmakers"],["settings","Settings"],["logs","Automation Logs"]];
+let activeView=localStorage.getItem(KEY+"_view")||"active";
+let pfilter={time:"all",book:"all",sport:"all",league:"all",betType:"all",conf:"all",result:"all",oddsMin:"",oddsMax:"",unitsMin:"",unitsMax:""};
+let bookSel="consensus";
+// Simulated daily scheduler: runs the automation once per calendar day on load
+// (the "~7am" trigger). Idempotent — same-day loads are no-ops.
+function autoDaily(){const t=new Date().toISOString().slice(0,10);if(state.lastAutoDate!==t)runDailyAutomation(state)}
+function nav(){
+  const b={active:primaryBets(state).filter(p=>p.status==="open").length,profile:primaryBets(state).filter(p=>p.status==="settled").length,logs:(state.logs||[]).length};
+  $("nav").innerHTML=VIEWS.map(([k,l])=>`<button class="nav-btn ${activeView===k?"active":""}" data-view="${k}">${l}${b[k]?`<small>${b[k]}</small>`:""}</button>`).join("");
+  $("nav").querySelectorAll("button").forEach(x=>x.onclick=()=>{activeView=x.dataset.view;localStorage.setItem(KEY+"_view",activeView);render()});
+}
+function render(){
+  rescanAll();snapshotBankroll(state);autoDaily();
+  $("sub").textContent="Autonomous multi-sport betting — settles, archives, recomputes, and re-slates daily.";
+  nav();
+  document.querySelectorAll(".view").forEach(v=>v.style.display="none");
+  const el=$("view-"+activeView);if(el)el.style.display="";
+  ({active:renderActive,profile:renderProfile,bankroll:renderBankroll,analytics:renderAnalytics,reports:renderReports,books:renderBooks,settings:renderSettings,logs:renderLogs}[activeView]||renderActive)();
+  prov();save();
+}
+function renderBankroll(){bankrollPanel();perfStats();}
+function renderActive(){
+  const c=activeCard(),{confirmed,all}=confirmCard(analyzeCard(c));
+  let mine=confirmed.filter(e=>e.agentId==="consensus");
+  sportSwitch();
+  leagueTabs(mine);                         // soccer only — pick a competition
+  if(activeSport==="mls"&&leagueFilter!=="all")mine=mine.filter(e=>(e.league||"mls")===leagueFilter);
+  mtabs(mine);
+  const leagueNote=activeSport==="mls"&&leagueFilter!=="all"?` · ${leagueLabel(leagueFilter)} only`:"";
+  $("edge-sub").innerHTML=offseason(c)
+    ?`<b>${c.label}</b> — offseason / no scheduled games. This tab is intentionally empty; the next automation run repopulates it when games return.`
+    :`Your funded Kalshi account's <b>open</b> plays for <b>${c.label}</b>${leagueNote} — cleared the ${GATE}% gate, sized at ${(accountStats(state).unitPct*100).toFixed(0)}% unit. Settled bets move to Profile automatically.`;
+  todaysCard(mine);
+  edgeList("rejected",all.filter(e=>e.confidence<GATE&&(activeSport!=="mls"||leagueFilter==="all"||(e.league||"mls")===leagueFilter)).slice(0,6),false);
+  settle();
+}
+// Soccer league selector (mls/epl/laliga/seriea/bundesliga). Non-soccer tabs
+// clear it. Counts reflect confirmed consensus plays per competition.
+function leagueTabs(allMine){
+  const box=$("ltabs");if(!box)return;
+  if(activeSport!=="mls"){box.innerHTML="";return}
+  const leagues=["all","mls","epl","laliga","seriea","bundesliga"];
+  const n=lg=>lg==="all"?allMine.length:allMine.filter(e=>(e.league||"mls")===lg).length;
+  box.innerHTML=leagues.map(lg=>`<button class="mtab ${leagueFilter===lg?"active":""}" data-lg="${lg}">${lg==="all"?"All leagues":leagueLabel(lg)} · ${n(lg)}</button>`).join("");
+  box.querySelectorAll("button").forEach(b=>b.onclick=()=>{leagueFilter=b.dataset.lg;render()});
+}
+function bankrollPanel(){
+  const s=accountStats(state),R=s.risk;
+  const delta=r2(s.bankroll-s.start),dcls=delta>=0?"pos":"neg";
+  const flow=`<div class="flow">
+    <div class="flow-card"><div class="k">Starting bankroll</div><div class="v">${money(s.start)}</div><div class="d">seed capital</div></div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-card"><div class="k">Current bankroll</div><div class="v ${dcls}">${money(s.bankroll)}</div><div class="d ${dcls}">${delta>=0?"+":""}${money(delta)} after ${s.wins+s.losses} settled</div></div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-card"><div class="k">Current unit size</div><div class="v">${money(s.unit)}</div><div class="d">${(R.unitPct*100).toFixed(0)}% × bankroll</div></div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-card"><div class="k">Staking</div><div class="v" style="font-size:19px">${R.mode==="kelly"?"¼ Kelly":"Fixed unit"}</div><div class="d">open exposure ${money(s.exposure)}</div></div>
+  </div>`;
+  const meter=(label,open,capPct)=>{const cap=r2(s.bankroll*capPct),pctv=cap>0?Math.min(100,open/cap*100):0;
+    return `<div class="meter"><div class="k"><span>${label}</span><b>${money(open)} / ${money(cap)}</b></div>
+      <div class="track"><div class="fill ${pctv>85?"hot":""}" style="width:${pctv.toFixed(0)}%"></div></div></div>`;};
+  const worstSport=["ufc","mls","mlb"].map(sp=>({sp,x:sportExposure(state,sp)})).sort((a,b)=>b.x-a.x)[0];
+  const biggestOpen=primaryBets(state).filter(p=>p.status==="open").reduce((m,p)=>Math.max(m,p.stake),0);
+  const risk=`<div class="risk-panel">
+    ${meter(`Max daily exposure (${(R.maxDailyPct*100)|0}%)`,s.exposure,R.maxDailyPct)}
+    ${meter(`Max ${sportLabel(worstSport.sp)} exposure (${(R.maxSportPct*100)|0}%)`,worstSport.x,R.maxSportPct)}
+    ${meter(`Largest single play (cap ${(R.maxSinglePct*100)|0}%)`,biggestOpen,R.maxSinglePct)}
+  </div>`;
+  const ctl=`<div class="controls">
+    <span class="ctl-label">Staking</span>
+    <span class="seg">${["kelly","fixed"].map(m=>`<button class="${R.mode===m?"on":""}" data-risk="mode" data-v="${m}">${m==="kelly"?"¼ Kelly":"Fixed unit"}</button>`).join("")}</span>
+    <span class="ctl-label" style="margin-left:8px">Unit %</span>
+    <span class="seg">${[.01,.02,.03,.05].map(u=>`<button class="${Math.abs(R.unitPct-u)<1e-9?"on":""}" data-risk="unit" data-v="${u}">${(u*100)|0}%</button>`).join("")}</span>
+  </div>`;
+  $("bankroll").innerHTML=flow+risk+ctl;
+  $("bankroll").querySelectorAll("[data-risk]").forEach(b=>b.onclick=()=>{
+    if(b.dataset.risk==="mode")state.risk.mode=b.dataset.v;else state.risk.unitPct=+b.dataset.v;
+    save();render();
+  });
+}
+function perfStats(){
+  const s=accountStats(state);
+  const tiles=[
+    {k:"Profit",v:money(s.profit),acc:s.profit>=0?"green":"red",d:`${s.wins+s.losses} graded · ${s.openCount} open`},
+    {k:"ROI",v:`${s.roi>=0?"+":""}${s.roi}%`,acc:s.roi>=0?"green":"red",sm:1,d:"on money risked"},
+    {k:"Win %",v:s.winPct==null?"—":`${s.winPct}%`,sm:1,d:`${s.wins}-${s.losses}${s.pushes?` · ${s.pushes}P`:""}${s.voids?` · ${s.voids}V`:""}`},
+    {k:"Current streak",v:s.streak?`${s.streak}${(s.dir||"").charAt(0).toUpperCase()}`:"—",sm:1,acc:s.dir==="win"?"green":s.dir==="loss"?"red":"",d:s.dir?`${s.dir==="win"?"winning":"losing"} streak`:"no bets settled"},
+    {k:"Closing line value",v:s.clv==null?"—":`${s.clv>=0?"+":""}${s.clv} pts`,sm:1,acc:s.clv>=0?"green":"red",d:"avg beat vs fair (close proxy)"},
+  ];
+  $("perf").innerHTML=tiles.map(c=>`<div class="stat ${c.acc?"acc-"+c.acc:""}"><div class="k">${c.k}</div>
+    <div class="v ${c.sm?"sm":""} ${c.acc?(c.acc==="green"?"pos":"neg"):""}">${c.v}</div><div class="d">${c.d}</div></div>`).join("");
+}
+function todaysCard(mine){
+  // Active Bets = open plays only. Settled plays have moved to the Profile archive.
+  const posFor=e=>state.positions.find(p=>p.agentId==="consensus"&&p.fightId===e.fightId&&p.marketKey===e.marketKey);
+  const list=mine.filter(e=>{if(!(filter==="all"||e.marketType===filter))return false;const p=posFor(e);return !p||p.status==="open"});
+  $("confirmed").innerHTML=list.length?list.map(e=>edgeCard(e,true,posFor(e))).join(""):
+    `<div class="empty">${offseason(activeCard())?"Offseason — no games scheduled.":"No open plays on this desk right now."}</div>`;
+}
+// Records/perf table HTML from a perfBy() result (used across Analytics/Books).
+function perfTableHTML(rows,firstCol="Segment"){
+  return rows.length
+    ?`<thead><tr><th>${firstCol}</th><th class="r">Record</th><th class="r">Win%</th><th class="r">Profit</th><th class="r">ROI</th></tr></thead><tbody>`+
+      rows.map(r=>`<tr><td>${r.key}</td><td class="r mono">${r.w}-${r.l}${r.push?`-${r.push}`:""}</td>
+        <td class="r mono">${r.winPct==null?"—":r.winPct+"%"}</td>
+        <td class="r mono ${r.profit>=0?"pos":"neg"}">${money(r.profit)}</td>
+        <td class="r mono ${r.roi==null?"":(r.roi>=0?"pos":"neg")}">${r.roi==null?"—":(r.roi>=0?"+":"")+r.roi+"%"}</td></tr>`).join("")+`</tbody>`
+    :`<tbody><tr><td class="empty">No graded plays yet.</td></tr></tbody>`;
+}
+function mtabs(mine){
+  const opts=activeSport==="mls"
+    ?[["all","All"],["match3","Match 1X2"],["goals_ou","Goals O/U"],["btts","BTTS"]]
+    :activeSport==="mlb"
+    ?[["all","All"],["winner","Moneyline"],["runline","Run Line"],["runs_ou","Runs O/U"]]
+    :[["all","All"],["winner","Winner"],["finish","Method"],["rounds","Rounds O/U"]];
+  $("mtabs").innerHTML=opts.map(([k,l])=>{const n=k==="all"?mine.length:mine.filter(e=>e.marketType===k).length;
+    return `<button class="mtab ${filter===k?"active":""}" data-m="${k}">${l} · ${n}</button>`}).join("");
+  $("mtabs").querySelectorAll("button").forEach(b=>b.onclick=()=>{filter=b.dataset.m;render()});
+}
+function sportSwitch(){
+  const tabName={ufc:"UFC",mls:"Soccer",mlb:"MLB"};
+  $("sportswitch").innerHTML=Object.values(CARDS).map(c=>{
+    const{confirmed}=confirmCard(analyzeCard(c));
+    return `<button class="sport-tab ${activeSport===c.sport?"active":""}" role="tab" aria-selected="${activeSport===c.sport}" data-s="${c.sport}">
+      <span class="emoji">${c.emoji}</span><span>${tabName[c.sport]||c.label}</span><small>${confirmed.length} edges</small></button>`;
+  }).join("");
+  $("sportswitch").querySelectorAll("button").forEach(b=>b.onclick=()=>{activeSport=b.dataset.s;localStorage.setItem(KEY+"_sport",activeSport);filter="all";leagueFilter="all";render()});
+}
+function edgeCard(e,confirmed,pos){
+  const col=e.confidence>=GATE?"var(--green)":e.confidence>=GATE-12?"var(--gold)":"var(--red)";
+  const facs=Object.entries(e.factors).map(([k,v])=>`<div class="factor"><div class="fk"><span>${k}</span><span>${Math.round(v*100)}</span></div>
+    <div class="ft"><div class="ff" style="width:${(v*100).toFixed(0)}%"></div></div></div>`).join("");
+  const vs=(e.marketType==="winner"||e.marketType==="match3")?`<span class="vs">vs ${e.oppName}</span>`:`<span class="vs">· ${e.oppName}</span>`;
+  const graded=pos&&pos.status==="settled";
+  const gradePill=graded?`<span class="pill ${pos.grade}" style="margin-left:8px">${pos.grade.toUpperCase()}${pos.pnl?` ${money(pos.pnl)}`:""}</span>`:"";
+  const stakeNum=pos?`<div class="num"><div class="k">Stake</div><div class="v" style="color:var(--gold)">${money(pos.stake)}</div></div>`:"";
+  return `<div class="edge ${confirmed?"confirmed":"rej"}"><div class="edge-top"><div>
+    <div class="edge-eyebrow"><span class="edge-fight">${e.fightSlot} · ${e.fightName}</span>
+      <span class="mkt-chip ${mktClass(e.marketType)}">${e.marketLabel}</span>${gradePill}</div>
+    <div class="edge-pick">Buy YES · ${e.sideName} ${vs}</div>
+    <span class="agent-tag" style="color:${aColor(e.agentId)};border-color:${aColor(e.agentId)}55">
+      ${e.agentId==="consensus"?"consensus · Kalshi acct":e.agentId+" agent"}</span></div>
+    <div class="edge-nums">
+      ${stakeNum}
+      <div class="num"><div class="k">Buy price</div><div class="v">${pct(e.kalshiPrice)}</div></div>
+      <div class="num"><div class="k">Fair</div><div class="v">${pct(e.fairProb)}</div></div>
+      <div class="num"><div class="k">Edge</div><div class="v ${e.edgeRoi>=0?"pos":"neg"}">${pct(e.edgeRoi)}</div></div></div></div>
+    <div class="conf-wrap"><div class="conf-head"><span>Confidence</span>
+      <span><b>${e.confidence}%</b> · ${e.detail.booksAgreeing}/${e.detail.booksQuoting} books agree</span></div>
+    <div class="conf-track"><div class="conf-fill" style="width:${e.confidence}%;background:${col}"></div>
+      <div class="conf-gate" style="left:${GATE}%"></div></div>
+    <div class="factors">${facs}</div></div></div>`;
+}
+function edgeList(id,list,confirmed){$(id).innerHTML=list.length?list.map(e=>edgeCard(e,confirmed)).join(""):`<div class="empty">No ${confirmed?"confirmed edges":"rejected signals"} on this desk.</div>`}
+function board(){
+  const rows=leaderboard(state);
+  const head=`<thead><tr><th>Rank</th><th>Agent</th><th class="r">Bankroll</th><th class="r">Equity</th>
+    <th class="r">P&L</th><th class="r">ROI</th><th class="r">Staked</th><th class="r">Record</th><th class="r">Win%</th><th class="r">Open</th></tr></thead>`;
+  const body=rows.map((r,i)=>{
+    const m=r.agentId==="consensus"?{l:"Consensus",n:"Kalshi account · confirmed only"}:{l:r.agentId,n:srcById(r.agentId).kind};
+    return `<tr class="${r.agentId==="consensus"?"consensus":""}">
+      <td class="rank">${i===0&&r.settled>0?'<span class="crown">★</span> ':""}#${i+1}</td>
+      <td><span class="dot" style="background:${aColor(r.agentId)}"></span><span class="aname">${m.l}<small>${m.n}</small></span></td>
+      <td class="r mono">${money(r.bankroll)}</td><td class="r mono">${money(r.equity)}</td>
+      <td class="r mono ${r.totalPnl>=0?"pos":"neg"}">${money(r.totalPnl)}</td>
+      <td class="r mono ${r.roiPct>=0?"pos":"neg"}">${r.roiPct>=0?"+":""}${r.roiPct}%</td>
+      <td class="r mono">${money(r.staked)}</td>
+      <td class="r mono">${r.wins}-${r.losses}</td><td class="r mono">${r.winRate==null?"—":r.winRate+"%"}</td>
+      <td class="r mono">${r.open}</td></tr>`}).join("");
+  $("lb").innerHTML=head+`<tbody>${body}</tbody>`;
+}
+function settle(){
+  const c=activeCard();
+  $("settle-sub").innerHTML=activeSport==="mls"
+    ?`Set the <b>result (1X2)</b>, total <b>goals</b>, and <b>BTTS</b> — the match, O/U, and BTTS markets settle from those.`
+    :activeSport==="mlb"
+    ?`Set the <b>winner</b>, the run <b>margin</b>, and <b>total runs</b> — moneyline, run line, and totals settle from those.`
+    :`Set the <b>winner</b> and how it <b>ended</b>. Winner, method, and rounds markets all settle from those two inputs.`;
+  // Also show completed (archived) games that still have OPEN bets, so a game
+  // that already happened can be settled to close out the paper account.
+  const pastOpen=(ARCHIVE[activeSport]||[]).filter(f=>state.positions.some(p=>p.fightId===f.id&&p.status==="open"));
+  $("settle").innerHTML=[...c.fights,...pastOpen].map(f=>{
+    const res=state.results[f.id]||{},ex=fightExposure(state,f.id),isPast=pastOpen.includes(f);
+    const vr=`<div class="void-row"><button class="void-btn" data-f="${f.id}" data-k="void">Void game (refund open)</button></div>`;
+    const head=`<div class="settle-card"><div class="fname">${f.name}${isPast?' <span class="past-tag">past</span>':''}${res.voided?' <span class="past-tag" style="color:var(--red);border-color:rgba(242,96,105,.4)">void</span>':''}</div><div class="fslot">${f.slot}</div>
+      <div class="exposure"><span>Staked <b>${money(ex.staked)}</b></span><span>${ex.bets} bets</span>
+        <span>P&L <b class="${ex.decided?(ex.pnl>=0?"pos":"neg"):""}">${ex.decided?money(ex.pnl):"—"}</b></span></div>`;
+    if(f.sport==="mls"){
+      const rb=(k,n)=>`<button class="${res.result===k?"won":res.result&&res.result!==k?"lost":""}" data-f="${f.id}" data-k="res" data-v="${k}">${n}</button>`;
+      const gb=n=>`<button class="${res.totalGoals===n?"won":res.totalGoals!=null&&res.totalGoals!==n?"lost":""}" data-f="${f.id}" data-k="goals" data-v="${n}">${n===4?"4+":n}</button>`;
+      const bb=(v,n)=>`<button class="${res.btts===v?"won":res.btts!=null&&res.btts!==v?"lost":""}" data-f="${f.id}" data-k="btts" data-v="${v}">${n}</button>`;
+      return head+`<div class="srow-label">Result</div><div class="win-btns">${rb("home",f.sideA)}${rb("draw","Draw")}${rb("away",f.sideB)}</div>
+        <div class="srow-label">Total goals</div><div class="win-btns">${[0,1,2,3,4].map(gb).join("")}</div>
+        <div class="srow-label">Both teams scored?</div><div class="win-btns">${bb(true,"Yes")}${bb(false,"No")}</div>${vr}</div>`;
+    }
+    if(f.sport==="mlb"){
+      const wb=(s,n)=>`<button class="${res.winner===s?"won":res.winner&&res.winner!==s?"lost":""}" data-f="${f.id}" data-k="win" data-v="${s}">${n}</button>`;
+      const mb=(v,n)=>`<button class="${res.margin===v?"won":res.margin!=null&&res.margin!==v?"lost":""}" data-f="${f.id}" data-k="margin" data-v="${v}">${n}</button>`;
+      const rb=n=>`<button class="${res.totalRuns===n?"won":res.totalRuns!=null&&res.totalRuns!==n?"lost":""}" data-f="${f.id}" data-k="runs" data-v="${n}">${n===11?"11+":n}</button>`;
+      return head+`<div class="srow-label">Winner</div><div class="win-btns">${wb("a",f.sideA)}${wb("b",f.sideB)}</div>
+        <div class="srow-label">Won by</div><div class="win-btns">${mb(1,"1 run")}${mb(2,"2+ runs")}</div>
+        <div class="srow-label">Total runs</div><div class="win-btns">${[6,7,8,9,10,11].map(rb).join("")}</div>${vr}</div>`;
+    }
+    const wb=(s,n)=>`<button class="${res.winner===s?"won":res.winner&&res.winner!==s?"lost":""}" data-f="${f.id}" data-k="win" data-v="${s}">${n}</button>`;
+    const eb=[];for(let r=1;r<=f.rounds;r++){const on=res.method==="fin"&&res.endRound===r;
+      eb.push(`<button class="${on?"won":res.method?"lost":""}" data-f="${f.id}" data-k="end" data-v="fin:${r}">R${r} finish</button>`)}
+    eb.push(`<button class="${res.method==="dec"?"won":res.method?"lost":""}" data-f="${f.id}" data-k="end" data-v="dec">Decision</button>`);
+    return head+`<div class="srow-label">Winner</div><div class="win-btns">${wb("a",f.sideA)}${wb("b",f.sideB)}</div>
+      <div class="srow-label">How it ended</div><div class="win-btns">${eb.join("")}</div>${vr}</div>`;
+  }).join("");
+  $("settle").querySelectorAll("button").forEach(b=>b.onclick=()=>{
+    const f=fightById(b.dataset.f),res={...(state.results[f.id]||{})},k=b.dataset.k,v=b.dataset.v;
+    if(k==="void"){voidFight(state,f.id);save();render();return}
+    if(k==="win")res.winner=v;
+    else if(k==="res")res.result=v;
+    else if(k==="goals")res.totalGoals=+v;
+    else if(k==="btts")res.btts=(v==="true");
+    else if(k==="margin")res.margin=+v;
+    else if(k==="runs")res.totalRuns=+v;
+    else if(k==="end"){if(v==="dec"){res.method="dec";res.endRound=f.rounds}else{res.method="fin";res.endRound=+v.split(":")[1]}}
+    applyResult(state,f,res);save();render();
+  });
+}
+/* ===================== PROFILE (immutable settled archive) ===================== */
+const BETTYPE={winner:"Moneyline / Winner",match3:"Match 1X2",finish:"Method",rounds:"Rounds O/U",goals_ou:"Goals O/U",runs_ou:"Runs O/U",runline:"Run Line",btts:"BTTS"};
+function timeCut(t){const n=new Date();switch(t){
+  case"24h":return Date.now()-DAY;case"7d":return Date.now()-7*DAY;case"4w":return Date.now()-28*DAY;case"12m":return Date.now()-365*DAY;
+  case"month":return new Date(n.getFullYear(),n.getMonth(),1).getTime();case"year":return new Date(n.getFullYear(),0,1).getTime();default:return 0}}
+function profileFiltered(){
+  const f=pfilter,cut=f.time==="custom"?null:timeCut(f.time);
+  return state.positions.filter(p=>p.status==="settled").filter(p=>{
+    const t=new Date(p.settledAt||p.placedAt||0).getTime();
+    if(cut!=null&&t<cut)return false;
+    if(f.time==="custom"){if(f.from&&t<new Date(f.from).getTime())return false;if(f.to&&t>new Date(f.to).getTime()+DAY)return false}
+    if(f.book!=="all"&&p.agentId!==f.book)return false;
+    if(f.sport!=="all"&&p.sport!==f.sport)return false;
+    if(f.league!=="all"&&(p.league||p.sport)!==f.league)return false;
+    if(f.betType!=="all"&&p.marketType!==f.betType)return false;
+    if(f.conf!=="all"&&confTier(p.confidence)!==f.conf)return false;
+    if(f.result!=="all"&&(p.grade||p.result)!==f.result)return false;
+    const oddsA=p.price>=.5?-Math.round(p.price/(1-p.price)*100):Math.round((1-p.price)/p.price*100);
+    if(f.oddsMin!==""&&oddsA<+f.oddsMin)return false;
+    if(f.oddsMax!==""&&oddsA>+f.oddsMax)return false;
+    if(f.unitsMin!==""&&(p.units==null||p.units<+f.unitsMin))return false;
+    if(f.unitsMax!==""&&(p.units==null||p.units>+f.unitsMax))return false;
+    return true;
+  }).sort((a,b)=>new Date(b.settledAt||0)-new Date(a.settledAt||0));
+}
+function renderProfile(){
+  const rows=profileFiltered();$("profile-count").textContent=rows.length;
+  const sel=(name,opts,cur)=>`<select data-pf="${name}">${opts.map(([v,l])=>`<option value="${v}" ${cur===v?"selected":""}>${l}</option>`).join("")}</select>`;
+  const num=(name,ph)=>`<input data-pf="${name}" type="number" placeholder="${ph}" value="${pfilter[name]}" style="width:74px">`;
+  const betTypes=[...new Set(state.positions.filter(p=>p.status==="settled").map(p=>p.marketType))];
+  $("profile-filters").innerHTML=`<div class="filters">
+    <div class="fg"><label>Time</label>${sel("time",[["all","All time"],["24h","Last 24h"],["7d","Last 7 days"],["4w","Last 4 weeks"],["month","This month"],["12m","Last 12 months"],["year","This year"],["custom","Custom"]],pfilter.time)}</div>
+    ${pfilter.time==="custom"?`<div class="fg"><label>From</label><input data-pf="from" type="date" value="${pfilter.from||""}"></div><div class="fg"><label>To</label><input data-pf="to" type="date" value="${pfilter.to||""}"></div>`:""}
+    <div class="fg"><label>Sportsbook</label>${sel("book",[["all","All books"],...["consensus","pinnacle","draftkings","fanduel","polymarket"].map(id=>[id,id==="consensus"?"Consensus":srcById(id).name])],pfilter.book)}</div>
+    <div class="fg"><label>Sport</label>${sel("sport",[["all","All"],["ufc","MMA"],["mls","Soccer"],["mlb","Baseball"]],pfilter.sport)}</div>
+    <div class="fg"><label>League</label>${sel("league",[["all","All"],...[...new Set(state.positions.filter(p=>p.status==="settled").map(p=>p.league||p.sport))].sort().map(lg=>[lg,leagueLabel(lg)])],pfilter.league)}</div>
+    <div class="fg"><label>Bet type</label>${sel("betType",[["all","All"],...betTypes.map(t=>[t,BETTYPE[t]||t])],pfilter.betType)}</div>
+    <div class="fg"><label>Confidence</label>${sel("conf",[["all","All"],["95%+","95%+"],["90-94%","90-94%"],["85-89%","85-89%"],["<85%","<85%"]],pfilter.conf)}</div>
+    <div class="fg"><label>Result</label>${sel("result",[["all","All"],["win","Win"],["loss","Loss"],["push","Push"],["void","Void"]],pfilter.result)}</div>
+    <div class="fg"><label>Odds range</label><span style="display:flex;gap:5px">${num("oddsMin","min")}${num("oddsMax","max")}</span></div>
+    <div class="fg"><label>Units</label><span style="display:flex;gap:5px">${num("unitsMin","min")}${num("unitsMax","max")}</span></div>
+    <button class="btn" id="pf-clear">Clear</button>
+  </div>`;
+  $("profile-filters").querySelectorAll("[data-pf]").forEach(el=>el.onchange=()=>{pfilter[el.dataset.pf]=el.value;render()});
+  $("pf-clear").onclick=()=>{pfilter={time:"all",book:"all",sport:"all",league:"all",betType:"all",conf:"all",result:"all",oddsMin:"",oddsMax:"",unitsMin:"",unitsMax:""};render()};
+  const head=`<thead><tr><th>Date</th><th>Book</th><th>Sport</th><th>League</th><th>Game</th><th>Bet type</th><th>Selection</th>
+    <th class="r">Odds</th><th class="r">Units</th><th class="r">Conf</th><th>Result</th><th class="r">P/L</th><th class="r">Close</th><th class="r">CLV</th><th>Final score</th></tr></thead>`;
+  const body=rows.length?rows.map(p=>{
+    const g=p.grade||p.result||"loss",clv=isFinite(p.closingProb)?r2((p.closingProb-p.price)*100):null;
+    return `<tr title="${(p.reason||'').replace(/"/g,'&quot;')}">
+      <td class="mono" style="white-space:nowrap">${(p.settledAt||"").slice(0,10)}</td>
+      <td><span class="dot" style="background:${aColor(p.agentId)}"></span>${p.agentId==="consensus"?"Consensus":srcById(p.agentId).name}</td>
+      <td>${sportLabel(p.sport)}</td><td>${leagueLabel(p.league||p.sport)}</td>
+      <td>${p.fightName}</td><td><span class="mkt-chip ${mktClass(p.marketType)}">${p.marketLabel}</span></td>
+      <td>${p.sideName}</td>
+      <td class="r mono">${fmtAmerican(p.price)}</td><td class="r mono">${p.units!=null?p.units+"u":"—"}</td>
+      <td class="r mono">${p.confidence??"—"}%</td>
+      <td><span class="pill ${g}">${g.toUpperCase()}</span></td>
+      <td class="r mono ${p.pnl>=0?"pos":"neg"}">${money(p.pnl)}</td>
+      <td class="r mono">${fmtAmerican(p.closingProb)}</td>
+      <td class="r mono ${clv==null?"":(clv>=0?"pos":"neg")}">${clv==null?"—":(clv>=0?"+":"")+clv}</td>
+      <td><small style="color:var(--muted)">${p.finalScore||"—"}</small></td></tr>`;
+  }).join(""):`<tr><td class="empty" colspan="15">No settled wagers match these filters.</td></tr>`;
+  $("profile-tbl").innerHTML=head+`<tbody>${body}</tbody>`;
+}
+/* ===================== ANALYTICS ===================== */
+function barChart(items){
+  if(!items.length)return `<div class="empty">No data yet.</div>`;
+  const max=Math.max(1,...items.map(i=>Math.abs(i.v))),n=items.length,bw=100/n;
+  return `<svg viewBox="0 0 100 120" preserveAspectRatio="none" class="chart">`+
+    items.map((it,i)=>{const hh=Math.abs(it.v)/max*52,y=it.v>=0?60-hh:60;
+      return `<rect x="${(i*bw+bw*0.18).toFixed(2)}" y="${y.toFixed(2)}" width="${(bw*0.64).toFixed(2)}" height="${Math.max(0.6,hh).toFixed(2)}" fill="${it.v>=0?'var(--green)':'var(--red)'}"><title>${it.k}: ${money(it.v)}</title></rect>`}).join("")+
+    `<line x1="0" y1="60" x2="100" y2="60" stroke="rgba(255,255,255,.14)" stroke-width="0.5" vector-effect="non-scaling-stroke"/></svg>`;
+}
+function lineChart(points){
+  if(points.length<2)return `<div class="empty">Not enough history yet — settle a few days of wagers.</div>`;
+  const ys=points.map(p=>p.bk),min=Math.min(...ys),max=Math.max(...ys),rng=max-min||1;
+  const pts=points.map((p,i)=>`${(i/(points.length-1)*100).toFixed(2)},${(112-((p.bk-min)/rng)*104).toFixed(2)}`).join(" ");
+  return `<svg viewBox="0 0 100 120" preserveAspectRatio="none" class="chart">
+    <polyline points="${pts}" fill="none" stroke="var(--gold)" stroke-width="1.4" vector-effect="non-scaling-stroke"/></svg>`;
+}
+function chartCard(title,svg,sub){return `<div class="chart-card"><div class="rec-title">${title}</div>${svg}${sub?`<div class="d" style="font-size:11px;color:var(--muted);margin-top:6px">${sub}</div>`:""}</div>`}
+function renderAnalytics(){
+  const s=accountStats(state),ls=longestStreaks(state);
+  const w=(label,r)=>`<div class="stat"><div class="k">${label} ROI</div><div class="v sm ${r.roi==null?"":(r.roi>=0?"pos":"neg")}">${r.roi==null?"—":(r.roi>=0?"+":"")+r.roi+"%"}</div><div class="d">${money(r.profit)} · ${r.n} bets</div></div>`;
+  const tiles=`<div class="stat-row">
+    <div class="stat"><div class="k">Lifetime profit</div><div class="v sm ${s.profit>=0?"pos":"neg"}">${money(s.profit)}</div><div class="d">${s.wins}-${s.losses} · ${s.winPct==null?"—":s.winPct+"% win"}</div></div>
+    ${w("Lifetime",windowRoi(state,Infinity))}${w("24h",windowRoi(state,DAY))}${w("7-day",windowRoi(state,7*DAY))}${w("30-day",windowRoi(state,30*DAY))}${w("Yearly",windowRoi(state,365*DAY))}
+    <div class="stat"><div class="k">Avg odds</div><div class="v sm">${avgOdds(state)||"—"}</div><div class="d">across settled</div></div>
+    <div class="stat"><div class="k">CLV</div><div class="v sm ${s.clv==null?"":(s.clv>=0?"pos":"neg")}">${s.clv==null?"—":(s.clv>=0?"+":"")+s.clv} pts</div><div class="d">vs fair (close proxy)</div></div>
+    <div class="stat"><div class="k">Units won</div><div class="v sm ${s.profit>=0?"pos":"neg"}">${s.unit>0?r2(s.profit/s.unit):0}u</div><div class="d">longest ${ls.longestWin}W / ${ls.longestLoss}L</div></div>
+  </div>`;
+  const charts=`<div class="charts-grid" style="margin-top:16px">
+    ${chartCard("Bankroll over time",lineChart(state.bankrollHistory||[]),`${money(s.start)} → ${money(s.bankroll)}`)}
+    ${chartCard("Daily profit / loss",barChart(dailyPnl(state).map(d=>({k:d.d.slice(5),v:d.v}))),"per settle date")}
+    ${chartCard("Profit by sport",barChart(perfBy(state,p=>sportLabel(p.sport)).map(r=>({k:r.key,v:r.profit}))))}
+    ${chartCard("Profit by league",barChart(perfBy(state,p=>leagueLabel(p.league||p.sport)).map(r=>({k:r.key,v:r.profit}))))}
+    ${chartCard("Units won by sportsbook",barChart(Object.keys(SOURCES).filter(id=>id!=="kalshi").concat("consensus").map(id=>({k:id==="consensus"?"Cons":srcById(id).name.slice(0,4),v:r2(state.positions.filter(p=>p.agentId===id&&p.status==="settled").reduce((a,p)=>a+p.pnl,0))})).filter(x=>x.v)))}
+    ${chartCard("Profit by confidence tier",barChart(perfBy(state,p=>confTier(p.confidence)).map(r=>({k:r.key,v:r.profit}))))}
+  </div>`;
+  const tbl=(title,rows,first)=>`<div><div class="rec-title" style="margin-top:14px">${title}</div><div class="tbl-wrap"><table>${perfTableHTML(rows,first)}</table></div></div>`;
+  const bookRows=Object.keys(SOURCES).filter(id=>id!=="kalshi").concat("consensus").map(id=>{
+    const r=perfBy(state,p=>p.agentId===id?id:null).find(x=>x.key===id)||{key:id,w:0,l:0,push:0,profit:0,roi:null,winPct:null};
+    return{...r,key:id==="consensus"?"Consensus":srcById(id).name};
+  }).sort((a,b)=>b.profit-a.profit);
+  const tables=`<div class="records-grid" style="margin-top:6px">
+    ${tbl("Sport performance",perfBy(state,p=>sportLabel(p.sport)),"Sport")}
+    ${tbl("League performance",perfBy(state,p=>leagueLabel(p.sport)),"League")}
+    ${tbl("Bet-type performance",perfBy(state,p=>BETTYPE[p.marketType]||p.marketType),"Bet type")}
+    ${tbl("Confidence-tier performance",perfBy(state,p=>confTier(p.confidence)),"Tier")}
+  </div>${tbl("Sportsbook performance",bookRows,"Book")}`;
+  $("analytics").innerHTML=tiles+charts+tables;
+}
+/* ===================== DAILY REPORTS ===================== */
+function renderReports(){
+  const rs=state.reports||[];
+  $("reports").innerHTML=rs.length?rs.map(r=>`<div class="report-card">
+    <div class="report-head"><b>${r.date}</b><span class="d">${new Date(r.ts).toLocaleTimeString()}</span></div>
+    <div class="report-body">
+      <span>Graded <b>${r.settled}</b> (${r.w}W-${r.l}L${r.push?` ${r.push}P`:""}${r.void?` ${r.void}V`:""})</span>
+      <span>Day P/L <b class="${r.dayPnl>=0?"pos":"neg"}">${money(r.dayPnl)}</b></span>
+      <span>Bankroll <b>${money(r.bankroll)}</b></span>
+      <span>New plays <b>${r.newPlays}</b></span>
+      ${r.offseason&&r.offseason.length?`<span>Offseason: ${r.offseason.join(", ")}</span>`:""}
+    </div></div>`).join(""):`<div class="empty">No automation runs yet. Hit “Run daily automation”.</div>`;
+}
+/* ===================== BOOKMAKERS ===================== */
+function renderBooks(){
+  board();
+  const books=["consensus",...Object.keys(SOURCES).filter(id=>id!=="kalshi")];
+  if(!bookSel)bookSel="consensus";
+  $("book-tabs").innerHTML=books.map(id=>`<button class="mtab ${bookSel===id?"active":""}" data-book="${id}">${id==="consensus"?"Consensus":srcById(id).name}</button>`).join("");
+  $("book-tabs").querySelectorAll("button").forEach(b=>b.onclick=()=>{bookSel=b.dataset.book;render()});
+  const settled=state.positions.filter(p=>p.agentId===bookSel&&p.status==="settled");
+  const open=state.positions.filter(p=>p.agentId===bookSel&&p.status==="open");
+  const prof=r2(settled.reduce((a,p)=>a+p.pnl,0)),w=settled.filter(p=>p.grade==="win").length,l=settled.filter(p=>p.grade==="loss").length;
+  const rows=perfBy(state,p=>p.agentId===bookSel?sportLabel(p.sport):null);
+  $("book-detail").innerHTML=`<div class="stat-row" style="margin-top:12px">
+    <div class="stat"><div class="k">${bookSel==="consensus"?"Consensus":srcById(bookSel).name} · profit</div><div class="v sm ${prof>=0?"pos":"neg"}">${money(prof)}</div><div class="d">${w}-${l} settled · ${open.length} open</div></div>
+    <div class="stat"><div class="k">Sharpness prior</div><div class="v sm">${srcById(bookSel).sharpness?(srcById(bookSel).sharpness*100).toFixed(0)+"%":"—"}</div><div class="d">${srcById(bookSel).kind||"consensus"}</div></div>
+  </div>
+  <div class="rec-title" style="margin-top:14px">${bookSel==="consensus"?"Consensus":srcById(bookSel).name} — by sport</div>
+  <div class="tbl-wrap"><table>${perfTableHTML(rows,"Sport")}</table></div>`;
+}
+/* ===================== SETTINGS ===================== */
+function renderSettings(){
+  const R=state.risk;
+  const numRow=(label,key,val)=>`<div class="set-row"><label>${label}</label>
+    <span class="seg">${[[.02,"2%"],[.03,"3%"],[.05,"5%"],[.10,"10%"],[.25,"25%"],[.40,"40%"]].map(([v,t])=>`<button class="${Math.abs(R[key]-v)<1e-9?"on":""}" data-set="${key}" data-v="${v}">${t}</button>`).join("")}</span></div>`;
+  $("settings").innerHTML=`<div class="set-panel">
+    <div class="set-row"><label>Starting bankroll</label><b class="mono">${money(state.startingBankroll)}</b></div>
+    <div class="set-row"><label>Staking mode</label><span class="seg">${["kelly","fixed"].map(m=>`<button class="${R.mode===m?"on":""}" data-set="mode" data-v="${m}">${m==="kelly"?"¼ Kelly":"Fixed unit"}</button>`).join("")}</span></div>
+    ${numRow("Unit size (% of bankroll)","unitPct")}
+    ${numRow("Max single play","maxSinglePct")}
+    ${numRow("Max sport exposure","maxSportPct")}
+    ${numRow("Max daily exposure","maxDailyPct")}
+    <div class="set-row"><label>Daily automation</label><button class="btn primary" id="set-run">▶ Run now</button></div>
+    <div class="set-row"><label>Reset everything</label><button class="btn" id="set-reset">Reset to ${money(state.startingBankroll)}</button></div>
+  </div>
+  <div class="note" style="margin-top:10px">Existing sportsbook models and edge calculations are unchanged — these controls only govern bankroll sizing and risk limits.</div>`;
+  $("settings").querySelectorAll("[data-set]").forEach(b=>b.onclick=()=>{const k=b.dataset.set,v=b.dataset.v;state.risk[k]=k==="mode"?v:+v;save();render()});
+  $("set-run").onclick=()=>{runDailyAutomation(state,{force:true});save();render()};
+  $("set-reset").onclick=()=>{if(confirm("Reset bankroll and clear all wagers, records, logs, and reports?")){state=initLedger(agentIds());save();render()}};
+}
+/* ===================== AUTOMATION LOGS ===================== */
+function renderLogs(){
+  const kindColor={start:"var(--gold)",done:"var(--green)",grade:"var(--blue)",slate:"var(--purple)",bankroll:"var(--ink)",offseason:"var(--muted)",skip:"var(--faint)",error:"var(--red)"};
+  const logs=state.logs||[];
+  $("logs").innerHTML=`<div style="margin-bottom:12px"><button class="btn primary" id="logs-run">▶ Run daily automation now</button></div>`+
+    (logs.length?`<div class="logbox">`+logs.map(e=>`<div class="logline"><span class="logts mono">${new Date(e.ts).toLocaleString()}</span>
+      <span class="logkind" style="color:${kindColor[e.kind]||"var(--muted)"}">${e.kind}</span><span>${e.msg}</span></div>`).join("")+`</div>`
+    :`<div class="empty">No automation actions logged yet.</div>`);
+  $("logs-run").onclick=()=>{runDailyAutomation(state,{force:true});save();render()};
+}
+function prov(){
+  $("prov").innerHTML=`Sources: ${Object.values(SOURCES).map(s=>s.name).join(" · ")}. `+
+    `UFC markets: winner · method (finish/distance) · rounds O/U. Soccer (MLS · EPL · La Liga · Serie A · Bundesliga): match result (1X2, three-way) · goals O/U · BTTS. MLB: moneyline · run line ±1.5 · runs O/U. `+
+    `Odds are representative snapshots (UFC = the real Sat Aug 29 2026 Fight Night, Nurmagomedov vs Song in Shanghai; Soccer = the real Aug 29–31 2026 fixtures across MLS, EPL, La Liga, Serie A and Bundesliga; MLB = the real Tue Aug 25 2026 slate — projected pre-match prices). Completed slates are archived, not deleted: their bets stay in the books. `+
+    `a live deploy with API keys runs the same engine on real-time quotes. Three-way markets use multiplicative de-vig across all outcomes. `+
+    `Gate ${GATE}%. Primary (Kalshi) account staking: unit sizing (¼ Kelly or fixed unit) capped by risk limits — max single play 5%, max sport 25%, max daily 40% of bankroll. CLV is measured vs de-vig fair (a proxy for the closing line). Paper only — no real money.`;
+}
+$("reset").onclick=()=>{if(confirm("Reset the bankroll and clear all wagers/records/logs back to $1,000?")){state=initLedger(agentIds());save();render()}};
+$("run-auto").onclick=()=>{runDailyAutomation(state,{force:true});activeView="logs";localStorage.setItem(KEY+"_view",activeView);save();render()};
+render();
+</script>
