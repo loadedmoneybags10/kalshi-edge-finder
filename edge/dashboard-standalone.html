@@ -1002,27 +1002,12 @@ const S_BTTS=()=>({kalshi:{a:{ask:.55,bid:.52,last:.54,volume:4000},b:{ask:.49,b
 // SOCCER — weekend of Aug 29–31 2026 across five leagues (MLS + EPL, La Liga,
 // Serie A, Bundesliga). One sport bucket ("mls"), each fixture tagged by league.
 const MLS={
-  sport:"mls",label:"Soccer · Aug 26–31 · leagues + cups",emoji:"⚽",event:"Soccer — Aug 26–31 (midweek: MLS + EFL Cup R2 · weekend: EPL · La Liga · Serie A · Bundesliga)",eventId:"soccer-2026-08-26",
-  date:"2026-08-26",venue:"Multiple leagues",
+  sport:"mls",label:"Soccer · Aug 28–31 weekend",emoji:"⚽",event:"Soccer — Aug 28–31 weekend (EPL · La Liga · Serie A · Bundesliga · MLS)",eventId:"soccer-2026-08-28",
+  date:"2026-08-28",venue:"Multiple leagues",
   fights:[
-    // ---- MLS · Wed Aug 26 (today, midweek — representative fixtures, real clubs) ----
-    // Orlando strong at home — Kalshi underprices the HOME side. Edge.
-    M("mls:0826:orl-tor","Orlando City vs. Toronto FC","MLS · Wed Aug 26 · Inter&Co Stadium","Orlando City SC","Toronto FC",MX_HOME_EDGE(),S_OU(false),S_BTTS(),"mls"),
-    // Cascadia rivalry — Kalshi underprices the DRAW. Edge.
-    M("mls:0826:por-van","Portland vs. Vancouver","MLS · Wed Aug 26 · Providence Park","Portland Timbers","Vancouver Whitecaps",MX_DRAW_EDGE(),S_OU(false),S_BTTS(),"mls"),
-    // Rocky Mountain Cup at altitude — Kalshi underprices the OVER 2.5. Edge.
-    M("mls:0826:rsl-col","Real Salt Lake vs. Colorado","MLS · Wed Aug 26 · America First Field","Real Salt Lake","Colorado Rapids",MX_EFF(),S_OU(true),S_BTTS(),"mls"),
-    M("mls:0826:phi-rbny","Philadelphia vs. NY Red Bulls","MLS · Wed Aug 26 · Subaru Park","Philadelphia Union","New York Red Bulls",MX_EFF(),S_OU(false),S_BTTS(),"mls"),
-
-    // ---- EFL Cup (Carabao Cup) · Round 2 · Wed Aug 26 (today, midweek — the
-    // live English midweek cup; FA Cup marquee rounds are Jan, registered dormant) ----
-    M("eflcup:0826:eve-shw","Everton vs. Sheffield Wednesday","EFL Cup R2 · Wed Aug 26 · Hill Dickinson Stadium","Everton","Sheffield Wednesday",MX_HOMEBIG(),S_OU(false),S_BTTS(),"eflcup"),
-    // PL club at home vs Championship side — Kalshi underprices the HOME side. Edge.
-    M("eflcup:0826:ful-bri","Fulham vs. Bristol City","EFL Cup R2 · Wed Aug 26 · Craven Cottage","Fulham","Bristol City",MX_HOME_EDGE(),S_OU(false),S_BTTS(),"eflcup"),
-    // Open cup tie — Kalshi underprices the OVER 2.5. Edge.
-    M("eflcup:0826:bre-rea","Brentford vs. Reading","EFL Cup R2 · Wed Aug 26 · Gtech Community Stadium","Brentford","Reading",MX_EFF(),S_OU(true),S_BTTS(),"eflcup"),
-    M("eflcup:0826:nfo-swa","Forest vs. Swansea City","EFL Cup R2 · Wed Aug 26 · The City Ground","Nottingham Forest","Swansea City",MX_HOMEBIG(),S_OU(false),S_BTTS(),"eflcup"),
-
+    // Thu Aug 27 has no domestic-league games — the next round is the weekend
+    // (Aug 28–31). Midweek Aug 26 fixtures have been retired. (Soccer fixtures
+    // are representative until the live feed is deployed — see docs/PHASE3.md.)
     // ---- MLS · Sat Aug 29 (weekend) ----
     // Miami strong at home behind Messi — Kalshi underprices the HOME side. Edge.
     M("mls:mia-nsh","Inter Miami vs. Nashville SC","Sat Aug 29 · Chase Stadium","Inter Miami","Nashville SC",
@@ -1149,9 +1134,8 @@ const MLB_AUG25={
   ],
 };
 
-// MLB — Wed Aug 26 2026 (today), full 15-game slate. Real matchups (series
-// continue from Aug 25; adds Reds @ Giants). Same engine/edge logic.
-const MLB={
+// MLB — Wed Aug 26 2026 (retired to archive; open bets stay settleable).
+const MLB_AUG26={
   sport:"mlb",label:"MLB · Wed Aug 26",emoji:"⚾",event:"MLB — Wednesday, August 26 (full slate)",eventId:"mlb-2026-08-26",
   date:"2026-08-26",venue:"Major League Baseball",
   fights:[
@@ -1194,13 +1178,40 @@ const MLB={
   ],
 };
 
+// MLB — Thursday Aug 27 2026 (today). Real slate: a 7-game getaway day (series
+// finales). Fewer games than a full slate — the real schedule, not a placeholder.
+const MLB={
+  sport:"mlb",label:"MLB · Thu Aug 27",emoji:"⚾",event:"MLB — Thursday, August 27 (getaway day · 7 games)",eventId:"mlb-2026-08-27",
+  date:"2026-08-27",venue:"Major League Baseball",
+  fights:[
+    MB("mlb:0827:col-wsh","Rockies vs. Nationals","Thu Aug 27 · Nationals Park","Colorado Rockies","Washington Nationals",MLhSm(),RL("b"),OUE(9)),
+    MB("mlb:0827:bal-stl","Orioles vs. Cardinals","Thu Aug 27 · Busch Stadium","Baltimore Orioles","St. Louis Cardinals",MLh(),RL("b"),OUE(8.5)),
+    // Kalshi underprices the Yankees (home favorite) vs the book consensus. Edge.
+    MB("mlb:0827:hou-nyy","Astros vs. Yankees","Thu Aug 27 · Yankee Stadium","Houston Astros","New York Yankees",
+      {kalshi:{a:{ask:.51,bid:.48,last:.50,volume:12000},b:{ask:.51,bid:.48,last:.50,volume:14000}},
+       books:{pinnacle:{a:118,b:-140},draftkings:{a:116,b:-138},fanduel:{a:120,b:-142}}},RL("b"),OUE(8.5)),
+    MB("mlb:0827:kc-tor","Royals vs. Blue Jays","Thu Aug 27 · Rogers Centre","Kansas City Royals","Toronto Blue Jays",MLhBig(),RL("b"),OUE(8.5)),
+    MB("mlb:0827:mil-nym","Brewers vs. Mets","Thu Aug 27 · Citi Field","Milwaukee Brewers","New York Mets",MLh(),RL("b"),OUE(8)),
+    // Kalshi underprices the Dodgers (road favorite) vs the book consensus. Edge.
+    MB("mlb:0827:lad-atl","Dodgers vs. Braves","Thu Aug 27 · Truist Park","Los Angeles Dodgers","Atlanta Braves",
+      {kalshi:{a:{ask:.55,bid:.52,last:.54,volume:15000},b:{ask:.47,bid:.44,last:.46,volume:12000}},
+       books:{pinnacle:{a:-155,b:132},draftkings:{a:-152,b:128},fanduel:{a:-158,b:134}}},RL("a"),OUE(8.5)),
+    // Oracle Park suppresses runs — Kalshi underprices the UNDER. Edge.
+    MB("mlb:0827:ari-sf","D-backs vs. Giants","Thu Aug 27 · Oracle Park","Arizona Diamondbacks","San Francisco Giants",
+      {kalshi:{a:{ask:.51,bid:.48,last:.50,volume:8000},b:{ask:.52,bid:.49,last:.51,volume:9000}},
+       books:{pinnacle:{a:118,b:-140},draftkings:{a:116,b:-138},fanduel:{a:120,b:-142}}},RL("b"),
+      {line:8,kalshi:{a:{ask:.50,bid:.47,last:.49,volume:8000},b:{ask:.52,bid:.49,last:.51,volume:10000}},
+       books:{pinnacle:{a:122,b:-148},draftkings:{a:120,b:-145},fanduel:{a:124,b:-150}}}),
+  ],
+};
+
 const CARDS={ufc:UFC,mls:MLS,mlb:MLB};
 // Completed slates are archived (kept resolvable & in the ledger); their settled
 // bets stay in the books and any open bets remain settleable.
 const ARCHIVE={
   ufc:[...UFC_329.fights,...UFC_JUL18.fights],
   mls:[...MLS_JUL17.fights,...MLS_JUL22.fights],
-  mlb:[...MLB_ARCHIVE,...MLB_JUN17.fights,...MLB_JUL19.fights,...MLB_AUG25.fights],
+  mlb:[...MLB_ARCHIVE,...MLB_JUN17.fights,...MLB_JUL19.fights,...MLB_AUG25.fights,...MLB_AUG26.fights],
 };
 
 /* ============================ RENDER ============================ */
