@@ -186,6 +186,20 @@
   .empty{font-size:12.5px;color:var(--muted);padding:16px;text-align:center}
   .note{font-size:11.5px;color:var(--faint);line-height:1.65;max-width:96ch}
   @media (max-width:600px){.stat .v{font-size:22px}.edge-nums{gap:14px}}
+  /* calendar */
+  .cal-day{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:12px 15px;margin-bottom:11px}
+  .cal-day.cal-today{border-color:rgba(232,164,74,.45);background:linear-gradient(180deg,rgba(232,164,74,.05),transparent)}
+  .cal-day-head{display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px;margin-bottom:6px;border-bottom:1px solid var(--border);padding-bottom:7px}
+  .cal-day-name{font-weight:800;font-size:14px}
+  .cal-badge{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--gold);background:var(--gold-dim);border:1px solid rgba(232,164,74,.4);border-radius:10px;padding:1px 7px;margin-left:6px}
+  .cal-day-meta{font-size:11.5px;color:var(--muted);font-family:var(--mono)}
+  .cal-play{padding:8px 0;border-bottom:1px solid rgba(255,255,255,.05)}
+  .cal-play:last-child{border-bottom:none}
+  .cal-play-top{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .cal-play-top b{font-size:13.5px}
+  .cal-ko{margin-left:auto;font-size:11px;color:var(--blue);font-family:var(--mono)}
+  .cal-play-desc{font-size:12px;color:var(--muted);margin-top:3px;line-height:1.5}
+  .cal-play-desc b{color:var(--ink)}
   @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
 
@@ -222,6 +236,13 @@
       <div class="sec-sub">Signals the confirmation agent rejected on the active desk.</div>
       <div class="edges" id="rejected"></div>
     </section>
+  </div>
+
+  <!-- CALENDAR — weekly timeline of the plays placed on each day -->
+  <div class="view" id="view-calendar">
+    <div class="sec-head"><span class="sec-title">Calendar</span></div>
+    <div class="sec-sub">A weekly timeline — every open play grouped by the day its game kicks off, soonest first, with the full bet description.</div>
+    <div id="calendar"></div>
   </div>
 
   <!-- PROFILE — permanent, immutable settled archive -->
@@ -1332,7 +1353,7 @@ function save(){localStorage.setItem(KEY,JSON.stringify(state))}
 // Scan + place bets for BOTH sports so P&L accrues regardless of the open tab.
 function rescanAll(){for(const c of Object.values(CARDS)){const{confirmed}=confirmCard(analyzeCard(c));confirmed.forEach(e=>placeBet(state,{...e,sport:c.sport}))}save()}
 
-const VIEWS=[["active","Active Bets"],["profile","Profile"],["bankroll","Bankroll"],["analytics","Analytics"],["reports","Daily Reports"],["books","Bookmakers"],["settings","Settings"],["logs","Automation Logs"]];
+const VIEWS=[["active","Active Bets"],["calendar","Calendar"],["profile","Profile"],["bankroll","Bankroll"],["analytics","Analytics"],["reports","Daily Reports"],["books","Bookmakers"],["settings","Settings"],["logs","Automation Logs"]];
 let activeView=localStorage.getItem(KEY+"_view")||"active";
 let pfilter={time:"all",book:"all",sport:"all",league:"all",betType:"all",conf:"all",result:"all",oddsMin:"",oddsMax:"",unitsMin:"",unitsMax:""};
 let bookSel="consensus";
@@ -1350,7 +1371,7 @@ function render(){
   nav();
   document.querySelectorAll(".view").forEach(v=>v.style.display="none");
   const el=$("view-"+activeView);if(el)el.style.display="";
-  ({active:renderActive,profile:renderProfile,bankroll:renderBankroll,analytics:renderAnalytics,reports:renderReports,books:renderBooks,settings:renderSettings,logs:renderLogs}[activeView]||renderActive)();
+  ({active:renderActive,calendar:renderCalendar,profile:renderProfile,bankroll:renderBankroll,analytics:renderAnalytics,reports:renderReports,books:renderBooks,settings:renderSettings,logs:renderLogs}[activeView]||renderActive)();
   prov();save();
 }
 function renderBankroll(){bankrollPanel();perfStats();}
@@ -1558,6 +1579,38 @@ function settle(){
     else if(k==="end"){if(v==="dec"){res.method="dec";res.endRound=f.rounds}else{res.method="fin";res.endRound=+v.split(":")[1]}}
     applyResult(state,f,res);save();render();
   });
+}
+/* ===================== CALENDAR (weekly timeline) ===================== */
+function renderCalendar(){
+  const DAYMS=864e5;
+  const open=state.positions.filter(p=>p.agentId==="consensus"&&p.status==="open");
+  const dayKey=t=>{const d=new Date(t);return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`};
+  const buckets={},undated=[];
+  open.forEach(p=>{const t=koOfId(p.fightId);if(!isFinite(t)){undated.push(p);return}(buckets[dayKey(t)]=buckets[dayKey(t)]||[]).push(p)});
+  const today=new Date();today.setHours(0,0,0,0);
+  const rows=[];
+  for(let i=0;i<7;i++){const d=new Date(today.getTime()+i*DAYMS),key=dayKey(d.getTime());
+    rows.push({d,key,plays:buckets[key]||[]})}
+  Object.keys(buckets).filter(k=>!rows.some(r=>r.key===k)).sort().forEach(k=>{
+    const [y,m,da]=k.split("-").map(Number);rows.push({d:new Date(y,m-1,da),key:k,plays:buckets[k]})});
+  rows.forEach(r=>r.plays.sort((a,b)=>koOfId(a.fightId)-koOfId(b.fightId)));
+  const todayKey=dayKey(Date.now());
+  const playRow=p=>`<div class="cal-play">
+    <div class="cal-play-top"><span class="mkt-chip ${mktClass(p.marketType)}">${leagueLabel(p.league||p.sport)}</span>
+      <b>${p.fightName}</b><span class="cal-ko">⏱ ${fmtKO(p.fightId)}</span></div>
+    <div class="cal-play-desc">Buy <b>${p.sideName}</b> · <span class="mono">${(p.price*100).toFixed(0)}¢</span> ·
+      stake <span class="mono" style="color:var(--gold)">${money(p.stake)}</span> ·
+      fair ${pct(p.fairProb)} · edge <span class="${p.edgeRoi>=0?"pos":"neg"}">${pct(p.edgeRoi)}</span> ·
+      <b>${p.confidence}%</b> conf · <span class="mkt-chip ${mktClass(p.marketType)}">${p.marketLabel}</span></div></div>`;
+  const html=rows.map(r=>{
+    const isToday=r.key===todayKey,stake=r.plays.reduce((s,p)=>s+p.stake,0);
+    const label=r.d.toLocaleDateString([],{weekday:"long",month:"short",day:"numeric"});
+    return `<div class="cal-day ${isToday?"cal-today":""}">
+      <div class="cal-day-head"><span class="cal-day-name">${label}${isToday?' <span class="cal-badge">Today</span>':""}</span>
+        <span class="cal-day-meta">${r.plays.length} play${r.plays.length!==1?"s":""}${stake?` · ${money(stake)} staked`:""}</span></div>
+      ${r.plays.length?r.plays.map(playRow).join(""):`<div class="empty" style="padding:8px">No plays scheduled.</div>`}</div>`;
+  }).join("");
+  $("calendar").innerHTML=html+(undated.length?`<div class="note" style="margin-top:10px">${undated.length} open play(s) have no scheduled kickoff and aren't on the timeline.</div>`:"");
 }
 /* ===================== PROFILE (immutable settled archive) ===================== */
 const BETTYPE={winner:"Moneyline / Winner",match3:"Match 1X2",finish:"Method",rounds:"Rounds O/U",goals_ou:"Goals O/U",runs_ou:"Runs O/U",runline:"Run Line",btts:"BTTS"};
