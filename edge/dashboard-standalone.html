@@ -459,7 +459,7 @@ function fightExposure(st,fid){
 // ---- PRIMARY-account stats & records (the bankroll model). Primary = the
 // consensus / funded Kalshi account; the other agents are shadow "books". ----
 const sportLabel=s=>({ufc:"MMA",mls:"Soccer",mlb:"Baseball"}[s]||s);
-const leagueLabel=s=>({ufc:"UFC",mls:"MLS",mlb:"MLB",epl:"EPL",laliga:"La Liga",seriea:"Serie A",bundesliga:"Bundesliga",eflcup:"EFL Cup",facup:"FA Cup"}[s]||s);
+const leagueLabel=s=>({ufc:"UFC",mls:"MLS",mlb:"MLB",epl:"EPL",laliga:"La Liga",seriea:"Serie A",bundesliga:"Bundesliga",eflcup:"EFL Cup",facup:"FA Cup",ucl:"Champions League",uel:"Europa League",uecl:"Conference League"}[s]||s);
 const primaryBets=st=>st.positions.filter(p=>p.agentId==="consensus");
 function accountStats(st){
   const R=st.risk||RISK_DEFAULT(),a=st.agents.consensus||{bankroll:st.startingBankroll};
@@ -1002,12 +1002,26 @@ const S_BTTS=()=>({kalshi:{a:{ask:.55,bid:.52,last:.54,volume:4000},b:{ask:.49,b
 // SOCCER — weekend of Aug 29–31 2026 across five leagues (MLS + EPL, La Liga,
 // Serie A, Bundesliga). One sport bucket ("mls"), each fixture tagged by league.
 const MLS={
-  sport:"mls",label:"Soccer · Aug 28–31 weekend",emoji:"⚽",event:"Soccer — Aug 28–31 weekend (EPL · La Liga · Serie A · Bundesliga · MLS)",eventId:"soccer-2026-08-28",
-  date:"2026-08-28",venue:"Multiple leagues",
+  sport:"mls",label:"Soccer · Aug 27–31 · leagues + UEFA",emoji:"⚽",event:"Soccer — UEFA playoffs (Thu Aug 27) + domestic weekend (Aug 28–31)",eventId:"soccer-2026-08-27",
+  date:"2026-08-27",venue:"Multiple leagues",
   fights:[
-    // Thu Aug 27 has no domestic-league games — the next round is the weekend
-    // (Aug 28–31). Midweek Aug 26 fixtures have been retired. (Soccer fixtures
-    // are representative until the live feed is deployed — see docs/PHASE3.md.)
+    // Domestic leagues are weekend rounds (Aug 28–31); the live midweek soccer
+    // today is the UEFA playoff 2nd legs. (Representative fixtures until the live
+    // feed is deployed — see docs/PHASE3.md.)
+    // ---- UEFA Europa League · Playoff 2nd leg · Thu Aug 27 ----
+    // Villa strong at home — Kalshi underprices the HOME side. Edge.
+    M("uel:0827:avl-ran","Aston Villa vs. Rangers","Europa League PO · Thu Aug 27 · Villa Park","Aston Villa","Rangers",MX_HOME_EDGE(),S_OU(false),S_BTTS(),"uel"),
+    M("uel:0827:bet-lyo","Real Betis vs. Lyon","Europa League PO · Thu Aug 27 · Benito Villamarín","Real Betis","Lyon",MX_EFF(),S_OU(false),S_BTTS(),"uel"),
+    // Even tie — Kalshi underprices the DRAW. Edge.
+    M("uel:0827:fey-cel","Feyenoord vs. Celtic","Europa League PO · Thu Aug 27 · De Kuip","Feyenoord","Celtic",MX_DRAW_EDGE(),S_OU(false),S_BTTS(),"uel"),
+
+    // ---- UEFA Conference League · Playoff 2nd leg · Thu Aug 27 ----
+    M("uecl:0827:fio-rap","Fiorentina vs. Rapid Wien","Conference League PO · Thu Aug 27 · Artemio Franchi","Fiorentina","Rapid Wien",MX_HOMEBIG(),S_OU(false),S_BTTS(),"uecl"),
+    // Kalshi underprices the HOME side. Edge.
+    M("uecl:0827:cry-aek","Crystal Palace vs. AEK Larnaca","Conference League PO · Thu Aug 27 · Selhurst Park","Crystal Palace","AEK Larnaca",MX_HOME_EDGE(),S_OU(false),S_BTTS(),"uecl"),
+    // Kalshi underprices the OVER 2.5. Edge.
+    M("uecl:0827:ray-leg","Rayo Vallecano vs. Legia Warsaw","Conference League PO · Thu Aug 27 · Vallecas","Rayo Vallecano","Legia Warsaw",MX_EFF(),S_OU(true),S_BTTS(),"uecl"),
+
     // ---- MLS · Sat Aug 29 (weekend) ----
     // Miami strong at home behind Messi — Kalshi underprices the HOME side. Edge.
     M("mls:mia-nsh","Inter Miami vs. Nashville SC","Sat Aug 29 · Chase Stadium","Inter Miami","Nashville SC",
@@ -1214,6 +1228,45 @@ const ARCHIVE={
   mlb:[...MLB_ARCHIVE,...MLB_JUN17.fights,...MLB_JUL19.fights,...MLB_AUG25.fights,...MLB_AUG26.fights],
 };
 
+// Kickoff times (UTC) for active fixtures — drives chronological ordering and the
+// weekly calendar. (Representative until the live feed supplies real commenceTime.)
+const KO={
+  // MLB — Thu Aug 27 (getaway day)
+  "mlb:0827:col-wsh":"2026-08-27T17:05:00Z","mlb:0827:bal-stl":"2026-08-27T18:15:00Z",
+  "mlb:0827:hou-nyy":"2026-08-27T23:05:00Z","mlb:0827:kc-tor":"2026-08-27T23:07:00Z",
+  "mlb:0827:mil-nym":"2026-08-27T23:10:00Z","mlb:0827:lad-atl":"2026-08-27T23:15:00Z",
+  "mlb:0827:ari-sf":"2026-08-28T01:45:00Z",
+  // UEFA — Thu Aug 27 playoff 2nd legs
+  "uel:0827:avl-ran":"2026-08-27T18:00:00Z","uel:0827:bet-lyo":"2026-08-27T19:00:00Z","uel:0827:fey-cel":"2026-08-27T18:00:00Z",
+  "uecl:0827:fio-rap":"2026-08-27T19:00:00Z","uecl:0827:cry-aek":"2026-08-27T18:00:00Z","uecl:0827:ray-leg":"2026-08-27T19:00:00Z",
+  // EPL — Fri Aug 28 to Sun Aug 30
+  "epl:cry-mci":"2026-08-28T19:00:00Z","epl:liv-nfo":"2026-08-29T11:30:00Z","epl:tot-new":"2026-08-29T14:00:00Z",
+  "epl:che-bha":"2026-08-30T13:00:00Z","epl:mun-ips":"2026-08-30T15:30:00Z",
+  // Bundesliga — Sat Aug 29
+  "bundesliga:dor-ham":"2026-08-29T13:30:00Z","bundesliga:rbl-bmg":"2026-08-29T13:30:00Z","bundesliga:fcu-sge":"2026-08-29T13:30:00Z",
+  "bundesliga:koe-hof":"2026-08-29T13:30:00Z","bundesliga:elv-lev":"2026-08-29T16:30:00Z",
+  // La Liga — Sat Aug 29 to Mon Aug 31
+  "laliga:atm-vil":"2026-08-29T16:30:00Z","laliga:rma-rso":"2026-08-29T19:00:00Z","laliga:val-ath":"2026-08-30T16:30:00Z",
+  "laliga:sev-bet":"2026-08-30T19:00:00Z","laliga:bar-ray":"2026-08-31T19:00:00Z",
+  // Serie A — Sun Aug 30 to Mon Aug 31
+  "seriea:laz-gen":"2026-08-30T16:30:00Z","seriea:nap-com":"2026-08-30T18:45:00Z","seriea:cag-int":"2026-08-30T18:45:00Z",
+  "seriea:ata-bol":"2026-08-31T16:30:00Z","seriea:lec-rom":"2026-08-31T18:45:00Z",
+  // MLS — Sat Aug 29 (evening ET)
+  "mls:mia-nsh":"2026-08-29T23:30:00Z","mls:cin-clb":"2026-08-29T23:30:00Z","mls:nyc-clt":"2026-08-29T23:30:00Z",
+  "mls:atx-hou":"2026-08-30T00:30:00Z","mls:min-skc":"2026-08-30T00:30:00Z","mls:lafc-sea":"2026-08-30T02:30:00Z",
+  // UFC — Sat Aug 29 (Shanghai; airs early UTC Aug 30)
+  "ufcsha:nuzzi-xiaolong":"2026-08-30T06:30:00Z","ufcsha:aoriqileng-asakura":"2026-08-30T07:00:00Z",
+  "ufcsha:yan-gomes":"2026-08-30T07:30:00Z","ufcsha:umar-song":"2026-08-30T08:00:00Z",
+};
+// Attach kickoff to each fixture; fall back to the card date (noon UTC) if unlisted.
+Object.values(CARDS).forEach(c=>c.fights.forEach(f=>{f.ko=KO[f.id]||(c.date?c.date+"T12:00:00Z":null);}));
+Object.values(ARCHIVE).forEach(arr=>arr.forEach(f=>{if(!f.ko)f.ko=null;}));
+const koMs=f=>f&&f.ko?new Date(f.ko).getTime():Infinity;              // sort key: kickoff, unknown last
+const koOfId=id=>koMs(fightById(id));
+// Short kickoff label in the VIEWER's timezone (closest-to-now ordering).
+const fmtKO=id=>{const t=koOfId(id);if(!isFinite(t))return"";
+  return new Date(t).toLocaleString([],{weekday:"short",month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"});};
+
 /* ============================ RENDER ============================ */
 // STABLE storage key — never bump this again. Schema changes are handled by
 // migrate() in place, so adding a league / market / agent is additive and your
@@ -1322,7 +1375,7 @@ function renderActive(){
 function leagueTabs(allMine){
   const box=$("ltabs");if(!box)return;
   if(activeSport!=="mls"){box.innerHTML="";return}
-  const order=["mls","epl","laliga","seriea","bundesliga","eflcup","facup"],
+  const order=["ucl","uel","uecl","epl","laliga","seriea","bundesliga","eflcup","facup","mls"],
         present=[...new Set(activeCard().fights.map(f=>f.league||"mls"))];
   const leagues=["all",...order.filter(l=>present.includes(l)),...present.filter(l=>!order.includes(l))];
   const n=lg=>lg==="all"?allMine.length:allMine.filter(e=>(e.league||"mls")===lg).length;
@@ -1378,7 +1431,8 @@ function perfStats(){
 function todaysCard(mine){
   // Active Bets = open plays only. Settled plays have moved to the Profile archive.
   const posFor=e=>state.positions.find(p=>p.agentId==="consensus"&&p.fightId===e.fightId&&p.marketKey===e.marketKey);
-  const list=mine.filter(e=>{if(!(filter==="all"||e.marketType===filter))return false;const p=posFor(e);return !p||p.status==="open"});
+  const list=mine.filter(e=>{if(!(filter==="all"||e.marketType===filter))return false;const p=posFor(e);return !p||p.status==="open"})
+    .sort((a,b)=>koOfId(a.fightId)-koOfId(b.fightId)||(b.confidence-a.confidence)); // soonest kickoff first
   $("confirmed").innerHTML=list.length?list.map(e=>edgeCard(e,true,posFor(e))).join(""):
     `<div class="empty">${offseason(activeCard())?"Offseason — no games scheduled.":"No open plays on this desk right now."}</div>`;
 }
@@ -1420,7 +1474,7 @@ function edgeCard(e,confirmed,pos){
   const gradePill=graded?`<span class="pill ${pos.grade}" style="margin-left:8px">${pos.grade.toUpperCase()}${pos.pnl?` ${money(pos.pnl)}`:""}</span>`:"";
   const stakeNum=pos?`<div class="num"><div class="k">Stake</div><div class="v" style="color:var(--gold)">${money(pos.stake)}</div></div>`:"";
   return `<div class="edge ${confirmed?"confirmed":"rej"}"><div class="edge-top"><div>
-    <div class="edge-eyebrow"><span class="edge-fight">${e.fightSlot} · ${e.fightName}</span>
+    <div class="edge-eyebrow">${fmtKO(e.fightId)?`<span class="mkt-chip" style="color:var(--blue);border-color:rgba(79,157,214,.4);background:rgba(79,157,214,.1)">⏱ ${fmtKO(e.fightId)}</span>`:""}<span class="edge-fight">${e.fightSlot} · ${e.fightName}</span>
       <span class="mkt-chip ${mktClass(e.marketType)}">${e.marketLabel}</span>${gradePill}</div>
     <div class="edge-pick">Buy YES · ${e.sideName} ${vs}</div>
     <span class="agent-tag" style="color:${aColor(e.agentId)};border-color:${aColor(e.agentId)}55">
@@ -1464,7 +1518,7 @@ function settle(){
   // Also show completed (archived) games that still have OPEN bets, so a game
   // that already happened can be settled to close out the paper account.
   const pastOpen=(ARCHIVE[activeSport]||[]).filter(f=>state.positions.some(p=>p.fightId===f.id&&p.status==="open"));
-  $("settle").innerHTML=[...c.fights,...pastOpen].map(f=>{
+  $("settle").innerHTML=[...c.fights,...pastOpen].sort((a,b)=>koMs(a)-koMs(b)).map(f=>{
     const res=state.results[f.id]||{},ex=fightExposure(state,f.id),isPast=pastOpen.includes(f);
     const vr=`<div class="void-row"><button class="void-btn" data-f="${f.id}" data-k="void">Void game (refund open)</button></div>`;
     const head=`<div class="settle-card"><div class="fname">${f.name}${isPast?' <span class="past-tag">past</span>':''}${res.voided?' <span class="past-tag" style="color:var(--red);border-color:rgba(242,96,105,.4)">void</span>':''}</div><div class="fslot">${f.slot}</div>
