@@ -1023,26 +1023,14 @@ const S_BTTS=()=>({kalshi:{a:{ask:.55,bid:.52,last:.54,volume:4000},b:{ask:.49,b
 // SOCCER — weekend of Aug 29–31 2026 across five leagues (MLS + EPL, La Liga,
 // Serie A, Bundesliga). One sport bucket ("mls"), each fixture tagged by league.
 const MLS={
-  sport:"mls",label:"Soccer · Aug 27–31 · leagues + UEFA",emoji:"⚽",event:"Soccer — UEFA playoffs (Thu Aug 27) + domestic weekend (Aug 28–31)",eventId:"soccer-2026-08-27",
-  date:"2026-08-27",venue:"Multiple leagues",
+  sport:"mls",label:"Soccer · Aug 28–31 weekend",emoji:"⚽",event:"Soccer — domestic weekend (Aug 28–31)",eventId:"soccer-2026-08-28",
+  date:"2026-08-28",venue:"Multiple leagues",
   fights:[
-    // Domestic leagues are weekend rounds (Aug 28–31); the live midweek soccer
-    // today is the UEFA playoff 2nd legs. (Representative fixtures until the live
-    // feed is deployed — see docs/PHASE3.md.)
-    // ---- UEFA Europa League · Playoff 2nd leg · Thu Aug 27 ----
-    // Villa strong at home — Kalshi underprices the HOME side. Edge.
-    M("uel:0827:avl-ran","Aston Villa vs. Rangers","Europa League PO · Thu Aug 27 · Villa Park","Aston Villa","Rangers",MX_HOME_EDGE(),S_OU(false),S_BTTS(),"uel"),
-    M("uel:0827:bet-lyo","Real Betis vs. Lyon","Europa League PO · Thu Aug 27 · Benito Villamarín","Real Betis","Lyon",MX_EFF(),S_OU(false),S_BTTS(),"uel"),
-    // Even tie — Kalshi underprices the DRAW. Edge.
-    M("uel:0827:fey-cel","Feyenoord vs. Celtic","Europa League PO · Thu Aug 27 · De Kuip","Feyenoord","Celtic",MX_DRAW_EDGE(),S_OU(false),S_BTTS(),"uel"),
-
-    // ---- UEFA Conference League · Playoff 2nd leg · Thu Aug 27 ----
-    M("uecl:0827:fio-rap","Fiorentina vs. Rapid Wien","Conference League PO · Thu Aug 27 · Artemio Franchi","Fiorentina","Rapid Wien",MX_HOMEBIG(),S_OU(false),S_BTTS(),"uecl"),
-    // Kalshi underprices the HOME side. Edge.
-    M("uecl:0827:cry-aek","Crystal Palace vs. AEK Larnaca","Conference League PO · Thu Aug 27 · Selhurst Park","Crystal Palace","AEK Larnaca",MX_HOME_EDGE(),S_OU(false),S_BTTS(),"uecl"),
-    // Kalshi underprices the OVER 2.5. Edge.
-    M("uecl:0827:ray-leg","Rayo Vallecano vs. Legia Warsaw","Conference League PO · Thu Aug 27 · Vallecas","Rayo Vallecano","Legia Warsaw",MX_EFF(),S_OU(true),S_BTTS(),"uecl"),
-
+    // UEFA Europa/Conference League playoff 2nd legs ARE today (Aug 27), but the
+    // exact draw pairings can't be hand-verified — so they are deliberately left
+    // OUT rather than shown as invented fixtures. UEFA is registered in the
+    // ingestion registry (lib/competitions.mjs) and will populate with the REAL
+    // ties automatically once the live feed is deployed.
     // ---- MLS · Sat Aug 29 (weekend) ----
     // Miami strong at home behind Messi — Kalshi underprices the HOME side. Edge.
     M("mls:mia-nsh","Inter Miami vs. Nashville SC","Sat Aug 29 · Chase Stadium","Inter Miami","Nashville SC",
@@ -1213,9 +1201,8 @@ const MLB_AUG26={
   ],
 };
 
-// MLB — Thursday Aug 27 2026 (today). Real slate: a 7-game getaway day (series
-// finales). Fewer games than a full slate — the real schedule, not a placeholder.
-const MLB={
+// MLB — Thu Aug 27 2026 (retired to archive; settled results stay in the books).
+const MLB_AUG27={
   sport:"mlb",label:"MLB · Thu Aug 27",emoji:"⚾",event:"MLB — Thursday, August 27 (getaway day · 7 games)",eventId:"mlb-2026-08-27",
   date:"2026-08-27",venue:"Major League Baseball",
   fights:[
@@ -1240,26 +1227,63 @@ const MLB={
   ],
 };
 
+// MLB — Friday Aug 28 2026 (today). Real 15-game slate (new series). Real matchups.
+const MLB={
+  sport:"mlb",label:"MLB · Fri Aug 28",emoji:"⚾",event:"MLB — Friday, August 28 (full slate · 15 games)",eventId:"mlb-2026-08-28",
+  date:"2026-08-28",venue:"Major League Baseball",
+  fights:[
+    MB("mlb:0828:cin-chc","Reds vs. Cubs","Fri Aug 28 · Wrigley Field","Cincinnati Reds","Chicago Cubs",MLh(),RL("b"),OUE(8.5)),
+    // Kalshi underprices the Dodgers (road favorite) vs the book consensus. Edge.
+    MB("mlb:0828:lad-det","Dodgers vs. Tigers","Fri Aug 28 · Comerica Park","Los Angeles Dodgers","Detroit Tigers",
+      {kalshi:{a:{ask:.54,bid:.51,last:.53,volume:15000},b:{ask:.48,bid:.45,last:.47,volume:12000}},
+       books:{pinnacle:{a:-150,b:128},draftkings:{a:-148,b:125},fanduel:{a:-152,b:130}}},RL("a"),OUE(8.5)),
+    MB("mlb:0828:mia-wsh","Marlins vs. Nationals","Fri Aug 28 · Nationals Park","Miami Marlins","Washington Nationals",MLhSm(),RL("b"),OUE(9)),
+    MB("mlb:0828:kc-cle","Royals vs. Guardians","Fri Aug 28 · Progressive Field","Kansas City Royals","Cleveland Guardians",MLh(),RL("b"),OUE(8)),
+    MB("mlb:0828:hou-nym","Astros vs. Mets","Fri Aug 28 · Citi Field","Houston Astros","New York Mets",MLh(),RL("b"),OUE(8)),
+    MB("mlb:0828:sd-tb","Padres vs. Rays","Fri Aug 28 · Steinbrenner Field","San Diego Padres","Tampa Bay Rays",MLaEff(),RL("a"),OUE(8.5)),
+    MB("mlb:0828:sea-tor","Mariners vs. Blue Jays","Fri Aug 28 · Rogers Centre","Seattle Mariners","Toronto Blue Jays",MLh(),RL("b"),OUE(8)),
+    MB("mlb:0828:col-atl","Rockies vs. Braves","Fri Aug 28 · Truist Park","Colorado Rockies","Atlanta Braves",MLhBig(),RL("b"),OUE(9)),
+    // Kalshi underprices the Yankees (home favorite) vs the book consensus. Edge.
+    MB("mlb:0828:bos-nyy","Red Sox vs. Yankees","Fri Aug 28 · Yankee Stadium","Boston Red Sox","New York Yankees",
+      {kalshi:{a:{ask:.51,bid:.48,last:.50,volume:14000},b:{ask:.51,bid:.48,last:.50,volume:16000}},
+       books:{pinnacle:{a:116,b:-138},draftkings:{a:114,b:-136},fanduel:{a:118,b:-140}}},RL("b"),OUE(9)),
+    MB("mlb:0828:tex-mil","Rangers vs. Brewers","Fri Aug 28 · American Family Field","Texas Rangers","Milwaukee Brewers",MLh(),RL("b"),OUE(8)),
+    MB("mlb:0828:cws-min","White Sox vs. Twins","Fri Aug 28 · Target Field","Chicago White Sox","Minnesota Twins",MLhSm(),RL("b"),OUE(8.5)),
+    MB("mlb:0828:pit-stl","Pirates vs. Cardinals","Fri Aug 28 · Busch Stadium","Pittsburgh Pirates","St. Louis Cardinals",MLh(),RL("b"),OUE(8.5)),
+    MB("mlb:0828:phi-laa","Phillies vs. Angels","Fri Aug 28 · Angel Stadium","Philadelphia Phillies","Los Angeles Angels",MLaEff(),RL("a"),OUE(8.5)),
+    // Sacramento heat / small park — Kalshi underprices the OVER. Edge.
+    MB("mlb:0828:bal-ath","Orioles vs. Athletics","Fri Aug 28 · Sutter Health Park","Baltimore Orioles","Athletics",
+      {kalshi:{a:{ask:.54,bid:.51,last:.53,volume:8000},b:{ask:.52,bid:.49,last:.51,volume:8000}},
+       books:{pinnacle:{a:-115,b:-105},draftkings:{a:-112,b:-108},fanduel:{a:-118,b:-102}}},RL("a"),
+      {line:9.5,kalshi:{a:{ask:.53,bid:.50,last:.52,volume:9000},b:{ask:.50,bid:.47,last:.49,volume:7000}},
+       books:{pinnacle:{a:-150,b:125},draftkings:{a:-145,b:118},fanduel:{a:-155,b:130}}}),
+    // Oracle Park suppresses runs — Kalshi underprices the UNDER. Edge.
+    MB("mlb:0828:ari-sf","D-backs vs. Giants","Fri Aug 28 · Oracle Park","Arizona Diamondbacks","San Francisco Giants",
+      {kalshi:{a:{ask:.51,bid:.48,last:.50,volume:8000},b:{ask:.52,bid:.49,last:.51,volume:9000}},
+       books:{pinnacle:{a:118,b:-140},draftkings:{a:116,b:-138},fanduel:{a:120,b:-142}}},RL("b"),
+      {line:8,kalshi:{a:{ask:.50,bid:.47,last:.49,volume:8000},b:{ask:.52,bid:.49,last:.51,volume:10000}},
+       books:{pinnacle:{a:122,b:-148},draftkings:{a:120,b:-145},fanduel:{a:124,b:-150}}}),
+  ],
+};
+
 const CARDS={ufc:UFC,mls:MLS,mlb:MLB};
 // Completed slates are archived (kept resolvable & in the ledger); their settled
 // bets stay in the books and any open bets remain settleable.
 const ARCHIVE={
   ufc:[...UFC_329.fights,...UFC_JUL18.fights],
   mls:[...MLS_JUL17.fights,...MLS_JUL22.fights],
-  mlb:[...MLB_ARCHIVE,...MLB_JUN17.fights,...MLB_JUL19.fights,...MLB_AUG25.fights,...MLB_AUG26.fights],
+  mlb:[...MLB_ARCHIVE,...MLB_JUN17.fights,...MLB_JUL19.fights,...MLB_AUG25.fights,...MLB_AUG26.fights,...MLB_AUG27.fights],
 };
 
 // Kickoff times (UTC) for active fixtures — drives chronological ordering and the
 // weekly calendar. (Representative until the live feed supplies real commenceTime.)
 const KO={
-  // MLB — Thu Aug 27 (getaway day)
-  "mlb:0827:col-wsh":"2026-08-27T17:05:00Z","mlb:0827:bal-stl":"2026-08-27T18:15:00Z",
-  "mlb:0827:hou-nyy":"2026-08-27T23:05:00Z","mlb:0827:kc-tor":"2026-08-27T23:07:00Z",
-  "mlb:0827:mil-nym":"2026-08-27T23:10:00Z","mlb:0827:lad-atl":"2026-08-27T23:15:00Z",
-  "mlb:0827:ari-sf":"2026-08-28T01:45:00Z",
-  // UEFA — Thu Aug 27 playoff 2nd legs
-  "uel:0827:avl-ran":"2026-08-27T18:00:00Z","uel:0827:bet-lyo":"2026-08-27T19:00:00Z","uel:0827:fey-cel":"2026-08-27T18:00:00Z",
-  "uecl:0827:fio-rap":"2026-08-27T19:00:00Z","uecl:0827:cry-aek":"2026-08-27T18:00:00Z","uecl:0827:ray-leg":"2026-08-27T19:00:00Z",
+  // MLB — Fri Aug 28 (15 games)
+  "mlb:0828:cin-chc":"2026-08-28T18:20:00Z","mlb:0828:lad-det":"2026-08-28T22:40:00Z","mlb:0828:mia-wsh":"2026-08-28T22:45:00Z",
+  "mlb:0828:kc-cle":"2026-08-28T23:10:00Z","mlb:0828:hou-nym":"2026-08-28T23:10:00Z","mlb:0828:sd-tb":"2026-08-28T23:10:00Z",
+  "mlb:0828:sea-tor":"2026-08-28T23:15:00Z","mlb:0828:col-atl":"2026-08-28T23:15:00Z","mlb:0828:bos-nyy":"2026-08-28T23:15:00Z",
+  "mlb:0828:tex-mil":"2026-08-28T23:40:00Z","mlb:0828:cws-min":"2026-08-29T00:10:00Z","mlb:0828:pit-stl":"2026-08-29T00:15:00Z",
+  "mlb:0828:phi-laa":"2026-08-29T01:38:00Z","mlb:0828:bal-ath":"2026-08-29T01:40:00Z","mlb:0828:ari-sf":"2026-08-29T02:15:00Z",
   // EPL — Fri Aug 28 to Sun Aug 30
   "epl:cry-mci":"2026-08-28T19:00:00Z","epl:liv-nfo":"2026-08-29T11:30:00Z","epl:tot-new":"2026-08-29T14:00:00Z",
   "epl:che-bha":"2026-08-30T13:00:00Z","epl:mun-ips":"2026-08-30T15:30:00Z",
