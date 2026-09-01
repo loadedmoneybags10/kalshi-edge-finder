@@ -5,7 +5,8 @@
     "api/poll.mjs":  { "memory": 256, "maxDuration": 30 },
     "api/grade.mjs": { "memory": 256, "maxDuration": 30 },
     "api/close.mjs": { "memory": 256, "maxDuration": 30 },
-    "api/state.mjs": { "memory": 256, "maxDuration": 10 }
+    "api/state.mjs": { "memory": 256, "maxDuration": 10 },
+    "api/discover.mjs": { "memory": 256, "maxDuration": 20 }
   },
   "rewrites": [
     { "source": "/", "destination": "/edge/dashboard-standalone.html" },
