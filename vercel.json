@@ -1,15 +1,13 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "functions": {
+    "api/cron.mjs":  { "memory": 256, "maxDuration": 60 },
     "api/poll.mjs":  { "memory": 256, "maxDuration": 30 },
     "api/grade.mjs": { "memory": 256, "maxDuration": 30 },
     "api/close.mjs": { "memory": 256, "maxDuration": 30 },
     "api/state.mjs": { "memory": 256, "maxDuration": 10 }
   },
   "crons": [
-    { "path": "/api/poll?sport=mlb",  "schedule": "0 15 * * *" },
-    { "path": "/api/close",           "schedule": "0 2 * * *" },
-    { "path": "/api/grade?sport=mlb", "schedule": "0 11 * * *" }
-  ],
-  "_cron_note": "Hobby plan triggers crons once/day (schedules above are daily). For the continuous edge-triggered model, upgrade to Pro and change poll to '*/10 * * * *' and close to '0 * * * *'. Times are UTC."
+    { "path": "/api/cron", "schedule": "0 12 * * *" }
+  ]
 }
