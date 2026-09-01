@@ -7,6 +7,10 @@
     "api/close.mjs": { "memory": 256, "maxDuration": 30 },
     "api/state.mjs": { "memory": 256, "maxDuration": 10 }
   },
+  "rewrites": [
+    { "source": "/", "destination": "/edge/dashboard-standalone.html" },
+    { "source": "/demo", "destination": "/edge/dashboard-demo.html" }
+  ],
   "crons": [
     { "path": "/api/cron", "schedule": "0 12 * * *" }
   ]
