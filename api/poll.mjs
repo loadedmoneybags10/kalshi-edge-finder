@@ -13,7 +13,10 @@
 
 import { fetchBookOdds, fetchKalshiMarkets } from "../lib/providers.mjs";
 import { buildMlbFixture } from "../lib/normalize.mjs";
-import { analyzeCard, confirmCard, placeBet, snapshotBankroll, accountStats } from "../lib/engine.mjs";
+import {
+  analyzeCard, confirmCard, tryPlace, recordCandidates, recordPriceHistory,
+  snapshotBankroll, accountStats,
+} from "../lib/engine.mjs";
 import { loadState, saveState, storeKind } from "../lib/store.mjs";
 
 const ABBR = {
@@ -61,16 +64,32 @@ export async function runPoll(sport = "mlb") {
   for (const f of card.fights)
     state.fixtures[f.id] = { id: f.id, sport: f.sport, name: f.name, commenceTime: f.commenceTime,
       markets: f.markets.map(m => ({ key: m.key, type: m.type, line: m.line ?? null, favSide: m.favSide ?? null })) };
-  const { confirmed } = confirmCard(analyzeCard(card));
-  const placed = [];
-  for (const e of confirmed) {
-    const pos = placeBet(state, { ...e, sport: card.sport });
-    if (pos && pos.agentId === "consensus") placed.push(`${pos.fightName} — ${pos.sideName} @ ${(pos.price * 100).toFixed(0)}¢ ($${pos.stake})`);
+  const now = Date.now();
+  const an = analyzeCard(card, state.priceHistory || {}, now);
+  const { all, candidates, confirmedConsensus } = confirmCard(an);
+
+  // Place every confirmed candidate (consensus is funded; shadow agents track).
+  const placed = [], portfolioRejections = [];
+  for (const d of all.filter(x => x.decision === "TRADE")) {
+    const r = tryPlace(state, d);
+    if (r.status === "placed" && r.pos.agentId === "consensus")
+      placed.push(`${r.pos.fixtureName} — ${r.pos.sideName} @ ${(r.pos.price * 100).toFixed(0)}¢ ($${r.pos.stake})`);
+    else if (r.status === "reject" && d.agentId === "consensus")
+      portfolioRejections.push({ ...d, decision: "NO_TRADE", rejectCode: r.code, rejectReason: r.reason });
   }
+
+  // Persist WHY (trades + rejections). A candidate that cleared the gate but was
+  // stopped by a portfolio cap is shown with its placement-level reason.
+  const rejById = new Map(portfolioRejections.map(d => [`${d.fixtureId}:${d.marketKey}`, d]));
+  const merged = candidates.map(d => rejById.get(`${d.fixtureId}:${d.marketKey}`) || d);
+  recordCandidates(state, merged);
+  recordPriceHistory(state, an, now);
   snapshotBankroll(state);
   await saveState(state);
   return { store: storeKind(), source: card.source, games: card.fights.length,
-    newConsensusPlays: placed, stats: accountStats(state) };
+    newConsensusPlays: placed,
+    noTrade: candidates.filter(d => d.decision === "NO_TRADE").length + portfolioRejections.length,
+    stats: accountStats(state) };
 }
 
 // ---- Vercel handler ----

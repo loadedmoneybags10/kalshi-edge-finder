@@ -24,11 +24,12 @@ export async function runClose({ force = false } = {}) {
     if (!started) continue;
     for (const m of f.markets) {
       const a = m.kalshi?.a?.ask ?? null, b = m.kalshi?.b?.ask ?? null;
-      // Stamp each bet's closing price with the final ask on the side it holds.
+      // Stamp each bet's closing price with the final ask on the side it holds,
+      // and record CLV = closing − entry (independent of the eventual result).
       state.positions.forEach(p => {
-        if (p.fightId !== f.id || p.marketKey !== m.key) return;
+        if ((p.fixtureId || p.fightId) !== f.id || p.marketKey !== m.key) return;
         const close = p.side === "a" ? a : b;
-        if (close != null) p.closingProb = close;
+        if (close != null) { p.closingProb = close; p.clv = Math.round((close - p.price) * 1e4) / 1e4; }
       });
       state.snapshots = state.snapshots || {};
       state.snapshots[`${f.id}:${m.key}`] = { a, b, at: new Date().toISOString() };
