@@ -234,7 +234,7 @@
     <div class="sub" id="sub"></div>
   </div>
   <div class="hdr-right">
-    <span class="badge src">Seed snapshot</span>
+    <span class="badge src" id="feed-badge">Seed snapshot</span>
     <span class="badge paper">Paper</span>
     <button class="btn primary" id="run-auto">▶ Run daily automation</button>
     <button class="btn" id="reset">Reset</button>
@@ -1995,7 +1995,10 @@ $("run-auto").onclick=async()=>{
 async function hydrate(){
   if(!location.protocol.startsWith("http"))return false;
   try{const r=await fetch("/api/state");if(!r.ok)return false;const j=await r.json();
-    if(j&&j.state&&j.state.agents){state=migrate(j.state);SERVER=true;return true;}}catch(e){}
+    if(j&&j.state&&j.state.agents){state=migrate(j.state);SERVER=true;
+      const fb=$("feed-badge");
+      if(fb&&j.feed)fb.textContent=j.feed==="sim"?"SIM · real odds":j.feed==="live"?"LIVE · Kalshi":"Mock feed";
+      return true;}}catch(e){}
   return false;}
 (async()=>{await hydrate();render();})();
 </script>

@@ -12,8 +12,9 @@
 //           GET /api/poll?sport=mlb           (one bucket)
 // ============================================================================
 
-import { fetchBookOdds, fetchKalshiMarkets } from "../lib/providers.mjs";
+import { fetchBookOdds, fetchKalshiMarkets, feedMode } from "../lib/providers.mjs";
 import { buildMlbFixture, buildSoccerFixture, buildUfcFixture } from "../lib/normalize.mjs";
+import { buildSimCard } from "../lib/simkalshi.mjs";
 import { enabledCompetitions, COMPETITIONS } from "../lib/competitions.mjs";
 import {
   analyzeCard, confirmCard, tryPlace, recordCandidates, recordPriceHistory,
@@ -116,13 +117,17 @@ export async function pollUfcCard() {
 }
 
 const card = (sport, label, fights) => ({
-  sport, label: `${label} — live poll`, date: iso().slice(0, 10), generatedAt: iso(),
-  source: process.env.USE_MOCK !== "0" ? "mock" : "live", fights,
+  sport, label: `${label} — ${feedMode()} poll`, date: iso().slice(0, 10), generatedAt: iso(),
+  source: feedMode(), fights,
 });
 
-// Build the right card for a competition by its engine bucket.
+// Build the right card for a competition by its engine bucket + feed mode.
 export async function buildCardFor(comp) {
-  if (comp.sport === "mlb") return pollMlbCard();
+  if (feedMode() === "sim") {                    // REAL odds + SIMULATED Kalshi
+    const events = await fetchBookOdds(comp.key);
+    return buildSimCard(comp, events);
+  }
+  if (comp.sport === "mlb") return pollMlbCard(); // mock / live ticker-matched
   if (comp.sport === "mls") return pollSoccerCard(comp.key);
   if (comp.sport === "ufc") return pollUfcCard();
   return card(comp.sport, comp.key.toUpperCase(), []);
@@ -175,7 +180,7 @@ export async function runPoll(scope = "all") {
   recordCandidates(state, consensusCandidates);
   snapshotBankroll(state);
   await saveState(state);
-  return { store: storeKind(), source: process.env.USE_MOCK !== "0" ? "mock" : "live",
+  return { store: storeKind(), source: feedMode(),
     scanned, games, newConsensusPlays: placed, noTrade, stats: accountStats(state) };
 }
 
