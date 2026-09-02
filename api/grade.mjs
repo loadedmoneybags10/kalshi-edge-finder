@@ -1,39 +1,59 @@
 // ============================================================================
-// /api/grade — settle decided games from a scores feed (Phase 3).
+// /api/grade — settle decided games from scores feeds (multi-sport).
 //
-// Fetches final scores, maps each completed game to a result, settles its open
-// paper bets, updates bankroll/records, and writes a daily report. Idempotent —
-// a game already in state.results is skipped, so re-running never double-settles.
+// Scans every enabled competition, fetches final scores, matches each completed
+// game to a stored fixture by team-name tokens (sport-scoped), settles its open
+// paper bets with the sport's result mapper, updates bankroll/records, and
+// writes a daily report. Idempotent — a game already in state.results is skipped.
 //
-//   Local:  node api/grade.mjs
-//   Cron:   GET /api/grade   (daily; see vercel.json)
+//   Local:  node api/grade.mjs            (all sports)
+//   Cron:   GET /api/grade                 (daily; see vercel.json)
 // ============================================================================
 
 import { fetchScores } from "../lib/providers.mjs";
-import { resultFromScore } from "../lib/normalize.mjs";
+import { resultFromScore, soccerResultFromScore, ufcResultFromScore } from "../lib/normalize.mjs";
 import { applyResult, accountStats, snapshotBankroll, pushReport, logAuto } from "../lib/engine.mjs";
 import { loadState, saveState, storeKind } from "../lib/store.mjs";
+import { pickComps } from "./poll.mjs";
+import { overlap } from "../lib/match.mjs";
 
-export async function runGrade(sport = "mlb") {
+const RESULT_OF = { mlb: resultFromScore, mls: soccerResultFromScore, ufc: ufcResultFromScore };
+
+// Find the stored fixture for a completed score event: same sport, and both of
+// the event's teams recognizable in the fixture's two sides.
+function matchFixture(state, sport, ev) {
+  const fixtures = Object.values(state.fixtures || {}).filter(f => f.sport === sport && !state.results[f.id]);
+  for (const f of fixtures) {
+    const text = `${f.sideA || ""} ${f.sideB || ""} ${f.name || ""}`;
+    if (overlap(ev.home_team, text) >= 1 && overlap(ev.away_team, text) >= 1) return f;
+  }
+  return null;
+}
+
+export async function runGrade(scope = "all") {
   const state = await loadState();
-  const scores = await fetchScores(sport);
   const before = accountStats(state);
   const graded = [];
 
-  for (const ev of scores) {
-    if (!ev.completed) continue;
-    const fix = state.fixtures?.[deriveId(ev)];
-    if (!fix) continue;                       // no fixture def (never polled) → skip
-    if (state.results[fix.id]) continue;      // already settled → idempotent skip
-    const res = resultFromScore(ev);
-    if (!res) continue;
-    applyResult(state, fix, res);
-    graded.push(fix.id);
+  for (const comp of pickComps(scope)) {
+    let scores;
+    try { scores = await fetchScores(comp.key); } catch { continue; }
+    const mapper = RESULT_OF[comp.sport];
+    if (!mapper) continue;
+    for (const ev of scores) {
+      if (!ev.completed) continue;
+      const fix = matchFixture(state, comp.sport, ev);
+      if (!fix || state.results[fix.id]) continue;
+      const res = mapper(ev);
+      if (!res) continue;
+      applyResult(state, fix, res);
+      graded.push(fix.id);
+    }
   }
 
   if (graded.length) {
     const settledToday = state.positions.filter(p => p.agentId === "consensus" && p.status === "settled" &&
-      graded.includes(p.fightId));
+      graded.includes(p.fixtureId || p.fightId));
     const w = settledToday.filter(p => p.grade === "win").length, l = settledToday.filter(p => p.grade === "loss").length;
     const dayPnl = settledToday.reduce((s, p) => s + p.pnl, 0);
     snapshotBankroll(state);
@@ -48,19 +68,14 @@ export async function runGrade(sport = "mlb") {
     record: `${after.wins}-${after.losses}`, roi: after.roi, clv: after.clv };
 }
 
-// The scores event's teams -> the fixture id the poller stored.
-function deriveId(ev) {
-  const slug = n => n.toLowerCase().replace(/[^a-z0-9]+/g, "").slice(0, 6);
-  return `mlb:${slug(ev.away_team)}-${slug(ev.home_team)}`;
-}
-
 export default async function handler(req, res) {
-  try { res.status(200).json(await runGrade((req.query?.sport || "mlb").toLowerCase())); }
+  try { res.status(200).json(await runGrade((req.query?.sport || "all").toLowerCase())); }
   catch (err) { res.status(500).json({ error: String(err?.message || err) }); }
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  const out = await runGrade("mlb");
+  const arg = process.argv.find(a => a.startsWith("--sport="));
+  const out = await runGrade(arg ? arg.split("=")[1] : "all");
   console.log(`\nGrade (${out.store}) -> games graded: ${out.gamesGraded}`);
   console.log(`Bankroll ${out.bankroll}  |  record ${out.record}  |  ROI ${out.roi}%  |  CLV ${out.clv ?? "—"} pts\n`);
 }
