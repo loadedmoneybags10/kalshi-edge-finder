@@ -11,6 +11,7 @@
 // ============================================================================
 
 import { buildCardFor, pickComps } from "./poll.mjs";
+import { fetchActiveSports } from "../lib/providers.mjs";
 import { loadState, saveState, storeKind } from "../lib/store.mjs";
 
 export async function runClose({ force = false, scope = "all" } = {}) {
@@ -18,9 +19,12 @@ export async function runClose({ force = false, scope = "all" } = {}) {
   const now = Date.now();
   let snapped = 0;
 
-  for (const comp of pickComps(scope)) {
+  // Same active-sports gating + shared odds cache as the poller (no extra credits).
+  const active = await fetchActiveSports();
+  const comps = pickComps(scope).filter(c => !active || active.has(c.oddsSport));
+  for (const comp of comps) {
     let card;
-    try { card = await buildCardFor(comp); } catch { continue; }
+    try { card = await buildCardFor(comp, state); } catch { continue; }
     for (const f of card.fights || []) {
       const started = force || (f.commenceTime && new Date(f.commenceTime).getTime() <= now);
       if (!started) continue;

@@ -12,7 +12,7 @@
 //           GET /api/poll?sport=mlb           (one bucket)
 // ============================================================================
 
-import { fetchBookOdds, fetchKalshiMarkets, feedMode } from "../lib/providers.mjs";
+import { fetchBookOdds, fetchKalshiMarkets, feedMode, fetchActiveSports, oddsCredits, oddsConfig } from "../lib/providers.mjs";
 import { buildMlbFixture, buildSoccerFixture, buildUfcFixture } from "../lib/normalize.mjs";
 import { buildSimCard } from "../lib/simkalshi.mjs";
 import { enabledCompetitions, COMPETITIONS } from "../lib/competitions.mjs";
@@ -121,11 +121,24 @@ const card = (sport, label, fights) => ({
   source: feedMode(), fights,
 });
 
+// Odds cache lives in state so the cron's close+poll (and repeat polls within a
+// day) share ONE paid fetch per competition. TTL configurable via ODDS_TTL_MIN.
+const ODDS_TTL_MS = (+(process.env.ODDS_TTL_MIN ?? 360)) * 60000;
+async function getOddsCached(state, comp) {
+  state.oddsCache = state.oddsCache || {};
+  const c = state.oddsCache[comp.key];
+  if (c && Date.now() - new Date(c.at).getTime() < ODDS_TTL_MS) return { events: c.events, cached: true };
+  const events = await fetchBookOdds(comp.key);   // paid call
+  state.oddsCache[comp.key] = { at: new Date().toISOString(), events };
+  return { events, cached: false };
+}
+
 // Build the right card for a competition by its engine bucket + feed mode.
-export async function buildCardFor(comp) {
+// In sim/live mode it uses the shared odds cache (and reports a paid fetch).
+export async function buildCardFor(comp, state = {}) {
   if (feedMode() === "sim") {                    // REAL odds + SIMULATED Kalshi
-    const events = await fetchBookOdds(comp.key);
-    return buildSimCard(comp, events);
+    const { events, cached } = await getOddsCached(state, comp);
+    const c = buildSimCard(comp, events); c.paidFetch = !cached; return c;
   }
   if (comp.sport === "mlb") return pollMlbCard(); // mock / live ticker-matched
   if (comp.sport === "mls") return pollSoccerCard(comp.key);
@@ -143,16 +156,20 @@ export function pickComps(scope) {
 
 // Load state → scan competitions → score → place confirmed bets → persist.
 export async function runPoll(scope = "all") {
-  const comps = pickComps(scope);
   const state = await loadState();
   state.fixtures = state.fixtures || {};
   const now = Date.now();
   const placed = [], consensusCandidates = [], scanned = [];
-  let games = 0, noTrade = 0;
+  let games = 0, noTrade = 0, paidFetches = 0;
+
+  // Credit-saver: skip out-of-season leagues using the FREE /sports check.
+  const active = await fetchActiveSports(); // Set of active odds keys, or null (mock → scan all)
+  const comps = pickComps(scope).filter(c => !active || active.has(c.oddsSport));
+  const skippedOffSeason = active ? pickComps(scope).length - comps.length : 0;
 
   for (const comp of comps) {
     let c;
-    try { c = await buildCardFor(comp); }
+    try { c = await buildCardFor(comp, state); if (c.paidFetch) paidFetches++; }
     catch (e) { scanned.push({ comp: comp.key, error: String(e?.message || e) }); continue; }
     if (!c || !c.fights.length) { scanned.push({ comp: comp.key, games: 0 }); continue; }
     games += c.fights.length;
@@ -180,8 +197,15 @@ export async function runPoll(scope = "all") {
   recordCandidates(state, consensusCandidates);
   snapshotBankroll(state);
   await saveState(state);
+  const credits = oddsCredits();
   return { store: storeKind(), source: feedMode(),
-    scanned, games, newConsensusPlays: placed, noTrade, stats: accountStats(state) };
+    scanned, games, newConsensusPlays: placed, noTrade, stats: accountStats(state),
+    credits: {
+      leaguesScanned: comps.length, skippedOffSeason, paidFetches,
+      creditsPerCall: oddsConfig().creditsPerCall,
+      estCreditsThisRun: paidFetches * oddsConfig().creditsPerCall,
+      remaining: credits.remaining, used: credits.used, markets: oddsConfig().markets,
+    } };
 }
 
 // ---- Vercel handler ----
