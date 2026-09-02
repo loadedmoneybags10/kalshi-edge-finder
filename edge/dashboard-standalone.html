@@ -492,7 +492,8 @@ const agentIds=()=>[...Object.keys(SOURCES).filter(i=>i!=="kalshi"),"consensus"]
 // Risk-management defaults for the PRIMARY (consensus / funded Kalshi) account.
 const RISK_DEFAULT=()=>({unitPct:.01,mode:"kelly",maxSinglePct:.03,maxEventPct:.05,maxTeamPct:.06,maxSportPct:.20,maxDailyPct:.30,maxCorrelatedPct:.05});
 function initLedger(ids,st=START){const agents={};ids.forEach(id=>agents[id]={bankroll:st,staked:0,openCount:0,settledCount:0,wins:0,losses:0});
-  return{startingBankroll:st,createdAt:new Date().toISOString(),agents,positions:[],results:{},risk:RISK_DEFAULT()}}
+  return{startingBankroll:st,createdAt:new Date().toISOString(),agents,positions:[],results:{},risk:RISK_DEFAULT(),
+    logs:[],reports:[],bankrollHistory:[],snapshots:{},fixtures:{},priceHistory:{},candidates:[],rejections:[],schemaVersion:2}}
 function kelly(bk,price,p){if(!(price>0&&price<1)||!(p>0&&p<1))return 0;const b=(1-price)/price,f=(b*p-(1-p))/b;if(!(f>0))return 0;return Math.max(0,bk*Math.min(f*KF,MAXF))}
 // Stake for the PRIMARY account: unit sizing (Kelly or Fixed) capped by the risk
 // limits (max single play, max sport exposure, max daily/total exposure).
