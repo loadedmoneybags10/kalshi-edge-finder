@@ -80,12 +80,37 @@
   .num{text-align:right}
   .num .k{font-size:9px;letter-spacing:.6px;text-transform:uppercase;color:var(--faint);font-weight:700}
   .num .v{font-size:17px;font-weight:700;margin-top:2px;font-family:var(--mono);font-variant-numeric:tabular-nums}
+  .verdict{display:flex;align-items:center;gap:10px;margin-top:12px;padding:8px 11px;border-radius:9px;font-size:12px;flex-wrap:wrap}
+  .verdict.go{background:rgba(55,196,137,.10);border:1px solid rgba(55,196,137,.32)}
+  .verdict.no{background:rgba(224,90,90,.08);border:1px solid rgba(224,90,90,.28)}
+  .vbadge{font-weight:800;font-size:11px;letter-spacing:.4px;font-family:var(--mono)}
+  .verdict.go .vbadge{color:var(--green)} .verdict.no .vbadge{color:var(--red)}
+  .vreason{color:var(--muted)}
+  .dgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(92px,1fr));gap:8px 14px;margin-top:12px;padding-top:12px;border-top:1px solid rgba(255,255,255,.06)}
+  .dnum .dk{font-size:9px;letter-spacing:.5px;text-transform:uppercase;color:var(--faint);font-weight:700}
+  .dnum .dv{font-size:14px;font-weight:700;margin-top:2px;font-family:var(--mono);font-variant-numeric:tabular-nums}
+  .dnum .dv.pos{color:var(--green)} .dnum .dv.neg{color:var(--red)}
   .conf-wrap{margin-top:13px}
   .conf-head{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:6px}
   .conf-head b{color:var(--ink);font-weight:700}
   .conf-track{height:8px;background:rgba(255,255,255,.06);border-radius:6px;position:relative}
   .conf-fill{height:100%;border-radius:6px}
   .conf-gate{position:absolute;top:-4px;bottom:-4px;width:2px;background:rgba(240,238,232,.55)}
+  .calwrap{margin-top:12px;background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.06);border-radius:12px;padding:12px 14px}
+  .calhead{display:flex;justify-content:space-between;font-size:10px;color:var(--faint);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px}
+  .calrow{display:grid;grid-template-columns:64px 1fr 120px;align-items:center;gap:10px;margin:4px 0}
+  .calk{font-size:11px;color:var(--muted);font-family:var(--mono)}
+  .calbar{position:relative;height:12px;background:rgba(255,255,255,.05);border-radius:6px;overflow:visible}
+  .calact{height:100%;background:linear-gradient(90deg,rgba(79,157,214,.5),rgba(55,196,137,.6));border-radius:6px}
+  .calpred{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--gold);z-index:2}
+  .calv{font-size:10px;color:var(--faint);font-family:var(--mono);text-align:right}
+  .proc-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-top:6px}
+  .proc-card{border-radius:11px;padding:12px 14px}
+  .proc-card.good{background:rgba(55,196,137,.08);border:1px solid rgba(55,196,137,.28)}
+  .proc-card.bad{background:rgba(224,90,90,.07);border:1px solid rgba(224,90,90,.26)}
+  .proc-card .pk{font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--faint);font-weight:700}
+  .proc-card .pv{font-size:18px;font-weight:800;margin:3px 0;font-family:var(--mono)}
+  .proc-card .pd{font-size:11px;color:var(--muted)}
   .factors{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:9px;margin-top:14px}
   .factor .fk{font-size:10px;color:var(--faint);text-transform:capitalize;display:flex;justify-content:space-between}
   .factor .fk span:last-child{font-family:var(--mono);color:var(--muted)}
@@ -383,42 +408,126 @@ function scoreConf(sig,am){
   let s=0;for(const k in WEIGHTS)s+=WEIGHTS[k]*factors[k];
   return{confidence:Math.round(s*100),factors,detail:{booksAgreeing:agree,booksQuoting:tot,bookFairMean:mean(bf)}};
 }
+/* ===== DECISION UPGRADE (mirrors lib/quant.mjs + lib/config.mjs) =====
+   Kept in sync with the server engine so standalone/demo mode shows the same
+   net-EV / conservative-probability decision the live pipeline computes. */
+const EC={
+  unc:{base:.015,kDisp:1,kFew:.03,kDiv:.5,min:.01,max:.15},
+  div:{soft:.08,hard:.20},
+  fee:.07, slip:{half:.5,kSize:.10,depth:.10,max:.05},
+  sig:{w:{agreement:.30,reliability:.20,magnitude:.22,liquidity:.13,freshness:.15},dispRef:.06,magRef:.10,liqRef:40000,gate:70},
+  gate:{minNetEv:.03,minEdgePts:.02,minConsvEdge:.005,minVol:500,maxSpread:.10,maxUnc:.12,maxDisp:.06},
+};
+const wstd=(vals,ws,mu)=>{let n=0,d=0;for(let i=0;i<vals.length;i++){const v=vals[i],w=ws[i]??1;if(isFinite(v)&&w>0){n+=w*(v-mu)**2;d+=w}}return d>0?Math.sqrt(n/d):0};
+const MFAM={winner:"moneyline",ml:"moneyline",runline:"spread",spread:"spread",runs_ou:"total",goals_ou:"total",rounds:"total",totals:"total",match3:"result",btts:"btts",finish:"method"};
+function corrTags(fight,mk,side){
+  const fam=MFAM[mk.type]||mk.type||"other",A=fight.sideA,B=fight.sideB;let backed=null,opp=null,dir;
+  if(fam==="moneyline"){backed=side==="a"?A:B;opp=side==="a"?B:A;dir=`team:${backed}`}
+  else if(fam==="spread"){const fav=mk.favSide==="a"?A:B,dog=mk.favSide==="a"?B:A;backed=side==="a"?fav:dog;opp=side==="a"?dog:fav;dir=`team:${backed}`}
+  else if(fam==="result"){if(side==="home"){backed=A;opp=B;dir=`team:${A}`}else if(side==="away"){backed=B;opp=A;dir=`team:${B}`}else dir="draw"}
+  else if(fam==="total")dir=`total:${side==="a"?"over":"under"}`;
+  else if(fam==="btts")dir=`btts:${side==="a"?"yes":"no"}`;
+  else dir=`${fam}:${side}`;
+  return{backedTeam:backed,opposingTeam:opp,marketFamily:fam,direction:dir};
+}
+const feePc=p=>(p>0&&p<1)?EC.fee*p*(1-p):0;
+const slipPc=(bid,ask,vol)=>{const sp=(isFinite(bid)&&ask>=bid)?ask-bid:0;return Math.min(EC.slip.max,EC.slip.half*sp)};
+function decide(sig,am,fight){
+  const side=sig.side, ask=am.asks[side], mk=am.market;
+  const bid=mk.kalshi?.[side]?.bid ?? ask;
+  const tags=fight?corrTags(fight,mk,side):{};
+  const R=refs().map(s=>({id:s.id,w:s.sharpness,p:am.reads[s.id]?.[side]})).filter(s=>isFinite(s.p));
+  const vals=R.map(s=>s.p),ws=R.map(s=>s.w);
+  const consensus=wmean(vals,ws), dispersion=wstd(vals,ws,consensus), nBooks=R.length;
+  const modelProb=sig.agentId==="consensus"?consensus:am.reads[sig.agentId]?.[side];
+  const divergence=sig.agentId==="consensus"?0:(modelProb-consensus);
+  const few=nBooks>0?EC.unc.kFew/Math.sqrt(nBooks):EC.unc.kFew;
+  let u=EC.unc.base+EC.unc.kDisp*dispersion+few+EC.unc.kDiv*Math.abs(divergence);
+  u=Math.max(EC.unc.min,Math.min(EC.unc.max,u));
+  const conservativeProb=clamp01(modelProb-u);
+  const fee=feePc(ask),slip=slipPc(bid,ask,sig.volume),cost=ask+fee+slip;
+  const probEdgePts=modelProb-ask, grossReturn=ask>0?modelProb/ask-1:NaN;
+  const netEdgePts=conservativeProb-cost, netReturn=cost>0?netEdgePts/cost:NaN;
+  const reliability=clamp01(mean(ws)/0.95);
+  const agreement=clamp01(1-dispersion/EC.sig.dispRef),magnitude=clamp01(netReturn/EC.sig.magRef),
+        liquidity=clamp01(Math.log10((sig.volume||0)+1)/Math.log10(EC.sig.liqRef)),freshness=1;
+  const F={agreement,reliability,magnitude,liquidity,freshness};let base=0;for(const k in EC.sig.w)base+=EC.sig.w[k]*F[k];
+  const ad=Math.abs(divergence);let pen=ad<=EC.div.soft?1-.4*(ad/EC.div.soft):.6-.4*clamp01((ad-EC.div.soft)/(EC.div.hard-EC.div.soft));
+  pen=Math.max(.1,Math.min(1,pen));
+  const signalQuality=Math.round(100*base*pen);
+  const spread=Math.max(0,ask-bid);
+  let decision="TRADE",reason=null;
+  const set=(r)=>{decision="NO_TRADE";reason=r};
+  if(!(ask>0))set("no executable Kalshi price");
+  else if(!(nBooks>=1))set("data quality problem");
+  else if(spread>EC.gate.maxSpread)set("spread too wide");
+  else if((sig.volume||0)<EC.gate.minVol)set("liquidity insufficient");
+  else if(probEdgePts<EC.gate.minEdgePts)set("raw probability edge too small");
+  else if(dispersion>EC.gate.maxDisp)set("bookmaker disagreement too high");
+  else if(ad>EC.div.hard)set("excessive model/market divergence");
+  else if(u>=EC.gate.maxUnc)set("uncertainty too high");
+  else if(netReturn<EC.gate.minNetEv||netEdgePts<EC.gate.minConsvEdge)set("net EV below threshold after uncertainty and fees");
+  else if(signalQuality<EC.sig.gate)set("signal quality below threshold");
+  return{consensusProb:consensus,modelProb,dispersion,nBooks,divergence,uncertainty:u,conservativeProb,
+    execPrice:ask,feePerContract:fee,slipPerContract:slip,costPerContract:cost,probEdgePts,grossReturn,
+    netEdgePts,netReturn,signalQuality,signalFactors:F,divergencePenalty:pen,spread,staleness:0,
+    volume:sig.volume,decision,rejectReason:reason,...tags};
+}
 function confirmCard(an){
   const edges=[];
-  an.fights.forEach(fa=>fa.markets.forEach(am=>am.signals.forEach(sg=>edges.push({...sg,...scoreConf(sg,am)}))));
-  edges.sort((x,y)=>y.confidence-x.confidence||y.edgeRoi-x.edgeRoi);
-  return{all:edges,confirmed:edges.filter(e=>e.confidence>=GATE)};
+  an.fights.forEach(fa=>fa.markets.forEach(am=>am.signals.forEach(sg=>{
+    const sc=scoreConf(sg,am),dec=decide(sg,am,fa.fight);
+    edges.push({...sg,...sc,dec,confidence:dec.signalQuality,netEv:dec.netReturn,decision:dec.decision,
+      backedTeam:dec.backedTeam,opposingTeam:dec.opposingTeam,direction:dec.direction,marketFamily:dec.marketFamily});
+  })));
+  edges.sort((x,y)=>(y.decision==="TRADE")-(x.decision==="TRADE")||y.dec.signalQuality-x.dec.signalQuality||(y.dec.netReturn||-1)-(x.dec.netReturn||-1));
+  return{all:edges,confirmed:edges.filter(e=>e.decision==="TRADE")};
 }
 
 /* ============================ LEDGER ============================ */
-const START=1000,KF=.25,MAXF=.05,MINS=1;
+const START=1000,KF=.25,MAXF=.03,MINS=1;
 const r2=x=>Math.round((+x+Number.EPSILON)*100)/100, r4=x=>Math.round((+x+Number.EPSILON)*1e4)/1e4;
 const uid=()=>"p_"+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
 const agentIds=()=>[...Object.keys(SOURCES).filter(i=>i!=="kalshi"),"consensus"];
 // Risk-management defaults for the PRIMARY (consensus / funded Kalshi) account.
-const RISK_DEFAULT=()=>({unitPct:.02,mode:"kelly",maxSinglePct:.05,maxSportPct:.25,maxDailyPct:.40});
+const RISK_DEFAULT=()=>({unitPct:.01,mode:"kelly",maxSinglePct:.03,maxEventPct:.05,maxTeamPct:.06,maxSportPct:.20,maxDailyPct:.30,maxCorrelatedPct:.05});
 function initLedger(ids,st=START){const agents={};ids.forEach(id=>agents[id]={bankroll:st,staked:0,openCount:0,settledCount:0,wins:0,losses:0});
   return{startingBankroll:st,createdAt:new Date().toISOString(),agents,positions:[],results:{},risk:RISK_DEFAULT()}}
 function kelly(bk,price,p){if(!(price>0&&price<1)||!(p>0&&p<1))return 0;const b=(1-price)/price,f=(b*p-(1-p))/b;if(!(f>0))return 0;return Math.max(0,bk*Math.min(f*KF,MAXF))}
 // Stake for the PRIMARY account: unit sizing (Kelly or Fixed) capped by the risk
 // limits (max single play, max sport exposure, max daily/total exposure).
+// Kelly now sizes on NET EV: effective price = all-in cost/contract, p = the
+// conservative probability. Falls back to fair/ask if no decision is attached.
+function kellyDec(bk,e){const d=e.dec;const price=d?d.costPerContract:e.kalshiPrice,p=d?d.conservativeProb:e.fairProb;return kelly(bk,price,p)}
 function primaryStake(st,e){
   const a=st.agents.consensus,R=st.risk||RISK_DEFAULT(),bk=a.bankroll;
-  const unit=bk*R.unitPct;
-  const desired=R.mode==="fixed"?unit:kelly(bk,e.kalshiPrice,e.fairProb);
+  const desired=R.mode==="fixed"?bk*R.unitPct:kellyDec(bk,e);
   const openBy=f=>st.positions.filter(p=>p.agentId==="consensus"&&p.status==="open"&&f(p)).reduce((s,p)=>s+p.stake,0);
-  return Math.max(0,Math.min(desired,bk*R.maxSinglePct,bk*R.maxSportPct-openBy(p=>p.sport===e.sport),bk*R.maxDailyPct-openBy(()=>true),bk));
+  const team=e.backedTeam||null, dir=e.direction||null;
+  return Math.max(0,Math.min(desired,bk*R.maxSinglePct,
+    bk*(R.maxEventPct??.05)-openBy(p=>p.fightId===e.fightId),
+    team?bk*(R.maxTeamPct??.06)-openBy(p=>p.backedTeam===team):Infinity,
+    dir?bk*(R.maxCorrelatedPct??.05)-openBy(p=>p.direction===dir):Infinity,
+    bk*R.maxSportPct-openBy(p=>p.sport===e.sport),bk*R.maxDailyPct-openBy(()=>true),bk));
 }
 function placeBet(st,e){
   const a=st.agents[e.agentId];if(!a)return null;
   if(st.positions.find(p=>p.agentId===e.agentId&&p.fightId===e.fightId&&p.marketKey===e.marketKey))return null;
-  const stake=e.agentId==="consensus"?primaryStake(st,e):Math.min(kelly(a.bankroll,e.kalshiPrice,e.fairProb),a.bankroll);
+  const stake=e.agentId==="consensus"?primaryStake(st,e):Math.min(kellyDec(a.bankroll,e),a.bankroll);
   if(stake<MINS)return null;
-  const contracts=stake/e.kalshiPrice;
-  const pos={id:uid(),agentId:e.agentId,sport:e.sport,league:e.league||e.sport,fightId:e.fightId,fightName:e.fightName,
-    marketKey:e.marketKey,marketLabel:e.marketLabel,marketType:e.marketType,line:e.line,
-    side:e.side,sideName:e.sideName,stake:r2(stake),contracts:r2(contracts),price:r4(e.kalshiPrice),
-    fairProb:r4(e.fairProb),closingProb:r4(e.fairProb),edgeRoi:r4(e.edgeRoi),confidence:e.confidence??null,
+  const d=e.dec||{},price=e.kalshiPrice,contracts=stake/price;
+  const fees=Math.ceil(EC.fee*contracts*price*(1-price)*100-1e-9)/100;
+  const pos={id:uid(),agentId:e.agentId,sport:e.sport,league:e.league||e.sport,fightId:e.fightId,fixtureId:e.fightId,fightName:e.fightName,fixtureName:e.fightName,
+    marketKey:e.marketKey,marketLabel:e.marketLabel,marketType:e.marketType,marketFamily:e.marketFamily||null,line:e.line,
+    side:e.side,sideName:e.sideName,backedTeam:e.backedTeam||null,direction:e.direction||null,
+    stake:r2(stake),contracts:r2(contracts),price:r4(price),actualFillPrice:r4(price+(d.slipPerContract||0)),
+    fees:r2(fees),estimatedSlippage:r2((d.slipPerContract||0)*contracts),
+    fairProb:r4(e.fairProb),modelProb:r4(d.modelProb??e.fairProb),consensusProb:r4(d.consensusProb??e.fairProb),
+    uncertainty:r4(d.uncertainty??0),conservativeProb:r4(d.conservativeProb??e.fairProb),
+    closingProb:r4(price),clv:null,edgeRoi:r4(e.edgeRoi),probEdge:r4(d.probEdgePts??e.edgePts),
+    grossEv:r4(d.grossReturn??e.edgeRoi),netEv:r4(d.netReturn??0),signalQuality:d.signalQuality??e.confidence??null,
+    dispersion:r4(d.dispersion??0),nBooks:d.nBooks??null,staleness:r4(d.staleness??0),marketDivergence:r4(d.divergence??0),
+    confidence:d.signalQuality??e.confidence??null,
     reason:buildReason(e),notes:"",units:e.agentId==="consensus"&&st.risk?r2(stake/Math.max(1e-9,a.bankroll*st.risk.unitPct)):null,
     finalScore:null,status:"open",placedAt:new Date().toISOString(),result:null,grade:null,pnl:0};
   a.bankroll=r2(a.bankroll-stake);a.staked=r2(a.staked+stake);a.openCount++;st.positions.push(pos);return pos;
@@ -1410,9 +1519,9 @@ function renderActive(){
   const leagueNote=activeSport==="mls"&&leagueFilter!=="all"?` · ${leagueLabel(leagueFilter)} only`:"";
   $("edge-sub").innerHTML=offseason(c)
     ?`<b>${c.label}</b> — offseason / no scheduled games. This tab is intentionally empty; the next automation run repopulates it when games return.`
-    :`Your funded Kalshi account's <b>open</b> plays for <b>${c.label}</b>${leagueNote} — cleared the ${GATE}% gate, sized at ${(accountStats(state).unitPct*100).toFixed(0)}% unit. Settled bets move to Profile automatically.`;
+    :`Your funded Kalshi account's <b>open</b> plays for <b>${c.label}</b>${leagueNote} — cleared the <b>net-EV gate</b> (positive EV on the conservative probability after fees &amp; slippage) and the ${EC.sig.gate}/100 signal-quality gate. Settled bets move to Profile automatically.`;
   todaysCard(mine);
-  edgeList("rejected",all.filter(e=>e.confidence<GATE&&(activeSport!=="mls"||leagueFilter==="all"||(e.league||"mls")===leagueFilter)).slice(0,6),false);
+  edgeList("rejected",all.filter(e=>e.decision!=="TRADE"&&(activeSport!=="mls"||leagueFilter==="all"||(e.league||"mls")===leagueFilter)).slice(0,8),false);
   settle();
 }
 // Soccer league selector (mls/epl/laliga/seriea/bundesliga). Non-soccer tabs
@@ -1510,29 +1619,50 @@ function sportSwitch(){
   }).join("");
   $("sportswitch").querySelectorAll("button").forEach(b=>b.onclick=()=>{activeSport=b.dataset.s;localStorage.setItem(KEY+"_sport",activeSport);filter="all";leagueFilter="all";render()});
 }
+// pts formatter: a 0–1 delta as signed percentage points.
+const ptsFmt=x=>`${x>=0?"+":""}${(x*100).toFixed(1)} pts`;
+const pctFmt=x=>`${x>=0?"+":""}${(x*100).toFixed(1)}%`;
 function edgeCard(e,confirmed,pos){
-  const col=e.confidence>=GATE?"var(--green)":e.confidence>=GATE-12?"var(--gold)":"var(--red)";
-  const facs=Object.entries(e.factors).map(([k,v])=>`<div class="factor"><div class="fk"><span>${k}</span><span>${Math.round(v*100)}</span></div>
+  const d=e.dec||{};
+  const trade=e.decision==="TRADE";
+  const col=trade?"var(--green)":d.signalQuality>=EC.sig.gate?"var(--gold)":"var(--red)";
+  const facs=Object.entries(d.signalFactors||e.factors||{}).map(([k,v])=>`<div class="factor"><div class="fk"><span>${k}</span><span>${Math.round(v*100)}</span></div>
     <div class="ft"><div class="ff" style="width:${(v*100).toFixed(0)}%"></div></div></div>`).join("");
   const vs=(e.marketType==="winner"||e.marketType==="match3")?`<span class="vs">vs ${e.oppName}</span>`:`<span class="vs">· ${e.oppName}</span>`;
   const graded=pos&&pos.status==="settled";
   const gradePill=graded?`<span class="pill ${pos.grade}" style="margin-left:8px">${pos.grade.toUpperCase()}${pos.pnl?` ${money(pos.pnl)}`:""}</span>`:"";
   const stakeNum=pos?`<div class="num"><div class="k">Stake</div><div class="v" style="color:var(--gold)">${money(pos.stake)}</div></div>`:"";
-  return `<div class="edge ${confirmed?"confirmed":"rej"}"><div class="edge-top"><div>
+  // Decision breakdown grid (brief §21) — every number the gate looked at.
+  const cell=(k,v,cls="")=>`<div class="dnum"><div class="dk">${k}</div><div class="dv ${cls}">${v}</div></div>`;
+  const grid=`<div class="dgrid">
+    ${cell("Fair prob",pct(d.modelProb))}
+    ${cell("Uncertainty","±"+(d.uncertainty*100).toFixed(1)+" pts")}
+    ${cell("Conservative",pct(d.conservativeProb))}
+    ${cell("Kalshi ask",pct(d.execPrice))}
+    ${cell("Prob edge",ptsFmt(d.probEdgePts),d.probEdgePts>=0?"pos":"neg")}
+    ${cell("Gross EV",pctFmt(d.grossReturn),d.grossReturn>=0?"pos":"neg")}
+    ${cell("Fees","-"+(d.feePerContract*100).toFixed(1)+"¢/ct")}
+    ${cell("Slippage","-"+(d.slipPerContract*100).toFixed(1)+" pts")}
+    ${cell("Net EV",pctFmt(d.netReturn),d.netReturn>=0?"pos":"neg")}
+    ${cell("Signal quality",d.signalQuality+"/100")}
+    ${cell("Book dispersion",(d.dispersion*100).toFixed(1)+" pts")}
+    ${cell("Model divergence",ptsFmt(d.divergence))}
+  </div>`;
+  const verdict=`<div class="verdict ${trade?"go":"no"}">
+    <span class="vbadge">${trade?"✓ TRADE":"✕ NO TRADE"}</span>
+    <span class="vreason">${trade?`net EV ${pctFmt(d.netReturn)} on conservative ${pct(d.conservativeProb)} vs cost ${pct(d.costPerContract)}`:d.rejectReason}</span></div>`;
+  return `<div class="edge ${trade?"confirmed":"rej"}"><div class="edge-top"><div>
     <div class="edge-eyebrow">${fmtKO(e.fightId)?`<span class="mkt-chip" style="color:var(--blue);border-color:rgba(79,157,214,.4);background:rgba(79,157,214,.1)">⏱ ${fmtKO(e.fightId)}</span>`:""}<span class="edge-fight">${e.fightSlot} · ${e.fightName}</span>
       <span class="mkt-chip ${mktClass(e.marketType)}">${e.marketLabel}</span>${gradePill}</div>
     <div class="edge-pick">Buy YES · ${e.sideName} ${vs}</div>
     <span class="agent-tag" style="color:${aColor(e.agentId)};border-color:${aColor(e.agentId)}55">
       ${e.agentId==="consensus"?"consensus · Kalshi acct":e.agentId+" agent"}</span></div>
-    <div class="edge-nums">
-      ${stakeNum}
-      <div class="num"><div class="k">Buy price</div><div class="v">${pct(e.kalshiPrice)}</div></div>
-      <div class="num"><div class="k">Fair</div><div class="v">${pct(e.fairProb)}</div></div>
-      <div class="num"><div class="k">Edge</div><div class="v ${e.edgeRoi>=0?"pos":"neg"}">${pct(e.edgeRoi)}</div></div></div></div>
-    <div class="conf-wrap"><div class="conf-head"><span>Confidence</span>
-      <span><b>${e.confidence}%</b> · ${e.detail.booksAgreeing}/${e.detail.booksQuoting} books agree</span></div>
-    <div class="conf-track"><div class="conf-fill" style="width:${e.confidence}%;background:${col}"></div>
-      <div class="conf-gate" style="left:${GATE}%"></div></div>
+    ${verdict}
+    ${grid}
+    <div class="conf-wrap"><div class="conf-head"><span>Signal quality <span style="opacity:.6;font-weight:400">(opportunity, not win prob)</span></span>
+      <span><b>${d.signalQuality}/100</b> · ${d.nBooks} books</span></div>
+    <div class="conf-track"><div class="conf-fill" style="width:${d.signalQuality}%;background:${col}"></div>
+      <div class="conf-gate" style="left:${EC.sig.gate}%"></div></div>
     <div class="factors">${facs}</div></div></div>`;
 }
 function edgeList(id,list,confirmed){$(id).innerHTML=list.length?list.map(e=>edgeCard(e,confirmed)).join(""):`<div class="empty">No ${confirmed?"confirmed edges":"rejected signals"} on this desk.</div>`}
@@ -1720,6 +1850,41 @@ function lineChart(points){
     <polyline points="${pts}" fill="none" stroke="var(--gold)" stroke-width="1.4" vector-effect="non-scaling-stroke"/></svg>`;
 }
 function chartCard(title,svg,sub){return `<div class="chart-card"><div class="rec-title">${title}</div>${svg}${sub?`<div class="d" style="font-size:11px;color:var(--muted);margin-top:6px">${sub}</div>`:""}</div>`}
+// ---- calibration / scoring (self-contained; mirrors lib/analytics.mjs) ----
+function settledPreds(){return primaryBets(state).filter(p=>p.status==="settled"&&(p.grade==="win"||p.grade==="loss"))
+  .map(p=>({p:(p.modelProb??p.fairProb),o:p.grade==="win"?1:0})).filter(x=>isFinite(x.p))}
+function brierOf(a){return a.length?r4(a.reduce((s,x)=>s+(x.p-x.o)**2,0)/a.length):null}
+function loglossOf(a){if(!a.length)return null;const e=1e-6;return r4(a.reduce((s,x)=>{const p=Math.min(1-e,Math.max(e,x.p));return s-(x.o*Math.log(p)+(1-x.o)*Math.log(1-p))},0)/a.length)}
+function calibOf(a){const b=Array.from({length:10},(_,i)=>({lo:i*10,n:0,sp:0,w:0}));a.forEach(x=>{const i=Math.min(9,Math.max(0,Math.floor(x.p*10)));b[i].n++;b[i].sp+=x.p;b[i].w+=x.o});let ece=0,t=0;b.forEach(x=>{if(x.n){ece+=x.n*Math.abs(x.sp/x.n-x.w/x.n);t+=x.n}});return{bins:b,ece:t?r4(ece/t):null,n:t}}
+function clvProcess(){const ps=primaryBets(state).filter(p=>p.status==="settled"&&(p.grade==="win"||p.grade==="loss")).map(p=>({clv:(p.clv!=null?p.clv:(p.closingProb-p.price)),win:p.grade==="win"})).filter(x=>isFinite(x.clv));
+  const good=ps.filter(x=>x.clv>0),bad=ps.filter(x=>x.clv<=0);
+  return{n:ps.length,mean:ps.length?r2(mean(ps.map(x=>x.clv))*100):null,posPct:ps.length?r2(100*good.length/ps.length):null,
+    good:{n:good.length,won:good.length?r2(100*good.filter(x=>x.win).length/good.length):null},
+    bad:{n:bad.length,won:bad.length?r2(100*bad.filter(x=>x.win).length/bad.length):null}};
+}
+function calibPanel(){
+  const preds=settledPreds(),cal=calibOf(preds),clv=clvProcess(),MINT=300;
+  const tiles=`<div class="stat-row">
+    <div class="stat"><div class="k">Brier score</div><div class="v sm">${brierOf(preds)??"—"}</div><div class="d">lower better · 0.25 = coin flip</div></div>
+    <div class="stat"><div class="k">Log loss</div><div class="v sm">${loglossOf(preds)??"—"}</div><div class="d">lower better</div></div>
+    <div class="stat"><div class="k">Calibration error</div><div class="v sm">${cal.ece==null?"—":cal.ece}</div><div class="d">ECE · gap pred vs actual</div></div>
+    <div class="stat"><div class="k">Graded sample</div><div class="v sm">${preds.length}</div><div class="d">${preds.length>=MINT?"sufficient":"observational only (&lt;"+MINT+")"}</div></div>
+    <div class="stat"><div class="k">Mean CLV</div><div class="v sm ${clv.mean==null?"":(clv.mean>=0?"pos":"neg")}">${clv.mean==null?"—":(clv.mean>=0?"+":"")+clv.mean} pts</div><div class="d">${clv.posPct==null?"":clv.posPct+"% positive"}</div></div>
+  </div>`;
+  const rows=cal.bins.map(b=>{const pred=b.n?b.sp/b.n:null,act=b.n?b.w/b.n:null;
+    return `<div class="calrow"><div class="calk">${b.lo}–${b.lo+10}%</div>
+      <div class="calbar"><div class="calpred" style="left:${pred==null?0:pred*100}%"></div><div class="calact" style="width:${act==null?0:act*100}%"></div></div>
+      <div class="calv">${b.n?`${Math.round((act)*100)}% act · n=${b.n}`:"—"}</div></div>`}).join("");
+  const proc=`<div class="proc"><div class="rec-title" style="margin-top:14px">Process vs. luck (CLV)</div>
+    <div class="proc-grid">
+      <div class="proc-card good"><div class="pk">Good process (+CLV)</div><div class="pv">${clv.good.n} trades</div><div class="pd">${clv.good.won==null?"—":clv.good.won+"% won"} — edge, some lost anyway</div></div>
+      <div class="proc-card bad"><div class="pk">Bad process (−CLV)</div><div class="pv">${clv.bad.n} trades</div><div class="pd">${clv.bad.won==null?"—":clv.bad.won+"% won"} — poor price, some won on luck</div></div>
+    </div></div>`;
+  return `<div class="rec-title" style="margin-top:18px">Calibration &amp; decision quality <span style="opacity:.6;font-weight:400;font-size:11px">— are our probabilities honest?</span></div>
+    ${tiles}
+    <div class="calwrap"><div class="calhead"><span>Predicted probability bucket</span><span>bar = actual win rate · tick = mean prediction</span></div>${rows}</div>
+    ${proc}`;
+}
 function renderAnalytics(){
   const s=accountStats(state),ls=longestStreaks(state);
   const w=(label,r)=>`<div class="stat"><div class="k">${label} ROI</div><div class="v sm ${r.roi==null?"":(r.roi>=0?"pos":"neg")}">${r.roi==null?"—":(r.roi>=0?"+":"")+r.roi+"%"}</div><div class="d">${money(r.profit)} · ${r.n} bets</div></div>`;
@@ -1749,7 +1914,7 @@ function renderAnalytics(){
     ${tbl("Bet-type performance",perfBy(state,p=>BETTYPE[p.marketType]||p.marketType),"Bet type")}
     ${tbl("Confidence-tier performance",perfBy(state,p=>confTier(p.confidence)),"Tier")}
   </div>${tbl("Sportsbook performance",bookRows,"Book")}`;
-  $("analytics").innerHTML=tiles+charts+tables;
+  $("analytics").innerHTML=tiles+calibPanel()+charts+tables;
 }
 /* ===================== DAILY REPORTS ===================== */
 function renderReports(){
@@ -1817,7 +1982,7 @@ function prov(){
     `UFC markets: winner · method (finish/distance) · rounds O/U. Soccer (MLS · EPL · La Liga · Serie A · Bundesliga): match result (1X2, three-way) · goals O/U · BTTS. MLB: moneyline · run line ±1.5 · runs O/U. `+
     `Odds are representative snapshots (UFC = the real Sat Aug 29 2026 Fight Night, Nurmagomedov vs Song in Shanghai; Soccer = the real Aug 29–31 2026 fixtures across MLS, EPL, La Liga, Serie A and Bundesliga; MLB = the real Tue Aug 25 2026 slate — projected pre-match prices). Completed slates are archived, not deleted: their bets stay in the books. `+
     `a live deploy with API keys runs the same engine on real-time quotes. Three-way markets use multiplicative de-vig across all outcomes. `+
-    `Gate ${GATE}%. Primary (Kalshi) account staking: unit sizing (¼ Kelly or fixed unit) capped by risk limits — max single play 5%, max sport 25%, max daily 40% of bankroll. CLV is measured vs de-vig fair (a proxy for the closing line). Paper only — no real money.`;
+    `Trade gate: positive NET EV on the conservative probability (fair − uncertainty) after Kalshi fees &amp; estimated slippage, plus a ${EC.sig.gate}/100 signal-quality gate. ¼-Kelly on net EV, capped by single 3% / event 5% / team 6% / sport 20% / daily 30% / correlated 5%. Source weights are labeled heuristic fallbacks, not proven. CLV measured vs the closing Kalshi line. Paper only — no real money.`;
 }
 $("reset").onclick=async()=>{if(!confirm("Reset the bankroll and clear all wagers/records/logs back to $1,000?"))return;
   if(SERVER){await fetch("/api/state",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({reset:1})});await hydrate();render();return;}
