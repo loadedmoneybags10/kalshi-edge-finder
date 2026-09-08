@@ -27,6 +27,10 @@
   .brand{font-size:19px;font-weight:800;letter-spacing:-.4px} .brand .b{color:var(--gold)}
   .sub{font-size:12px;color:var(--muted);margin-top:2px}
   .hdr-right{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+  #conn-banner{margin:0 24px 10px;padding:11px 14px;border-radius:10px;font-size:13px;line-height:1.5}
+  #conn-banner.warn{background:rgba(224,90,90,.10);border:1px solid rgba(224,90,90,.35);color:var(--ink)}
+  #conn-banner.info{background:rgba(232,164,74,.10);border:1px solid rgba(232,164,74,.35);color:var(--ink)}
+  #conn-banner b{color:var(--gold)} #conn-banner code{background:rgba(255,255,255,.08);padding:1px 5px;border-radius:4px}
   .badge{font-size:10px;font-weight:700;letter-spacing:.7px;text-transform:uppercase;padding:5px 10px;border-radius:6px;border:1px solid}
   .badge.paper{background:var(--gold-dim);color:var(--gold);border-color:rgba(232,164,74,.35)}
   .badge.src{background:rgba(79,157,214,.1);color:var(--blue);border-color:rgba(79,157,214,.3)}
@@ -242,6 +246,7 @@
 </header>
 
 <nav class="topnav" id="nav"></nav>
+<div id="conn-banner" hidden></div>
 
 <main>
   <!-- ACTIVE BETS — upcoming, unsettled wagers only -->
@@ -1507,7 +1512,7 @@ function nav(){
 function render(){
   if(!SERVER){rescanAll();autoDaily();}snapshotBankroll(state); // in server mode the poller/cron owns placement & automation
   $("sub").textContent="Autonomous multi-sport betting — settles, archives, recomputes, and re-slates daily.";
-  nav();
+  nav();connBanner();
   document.querySelectorAll(".view").forEach(v=>v.style.display="none");
   const el=$("view-"+activeView);if(el)el.style.display="";
   ({active:renderActive,calendar:renderCalendar,profile:renderProfile,bankroll:renderBankroll,analytics:renderAnalytics,reports:renderReports,books:renderBooks,settings:renderSettings,logs:renderLogs}[activeView]||renderActive)();
@@ -2060,8 +2065,9 @@ function pollSummary(pr){
   ];
   (pr.newConsensusPlays||[]).forEach(p=>lines.push("  + "+p));
   if(errs.length){lines.push("Feed errors:");errs.forEach(s=>lines.push(`  ! ${s.comp}: ${s.error}`));}
+  if(pr.storeStatus&&pr.storeStatus.warn)lines.push("⚠ Persistence: "+pr.storeStatus.warn);
   if(!pr.games&&!errs.length)lines.push("No games returned — likely no in-season fixtures right now, or the Odds API key isn't set/valid.");
-  if(pr.games&&!(pr.newConsensusPlays||[]).length&&!errs.length)lines.push("Games found but none cleared the net-EV gate. Lower SIM_EDGE creates fewer plays; raise it for more.");
+  if(pr.games&&!(pr.newConsensusPlays||[]).length&&!errs.length)lines.push("Games found but none cleared the net-EV gate. Raise SIM_EDGE (e.g. 0.09) for more plays.");
   return lines.join("\n");
 }
 $("run-auto").onclick=async()=>{
@@ -2078,14 +2084,28 @@ $("run-auto").onclick=async()=>{
   runDailyAutomation(state,{force:true});activeView="logs";localStorage.setItem(KEY+"_view",activeView);save();render();};
 let LASTRUN="";
 // ---- boot: hydrate the shared ledger over HTTP; else use localStorage (standalone) ----
+let HYDRATE_INFO={connected:false,reason:null,storeWarn:null};
 async function hydrate(){
-  if(!location.protocol.startsWith("http"))return false;
-  try{const r=await fetch("/api/state");if(!r.ok)return false;const j=await r.json();
+  if(!location.protocol.startsWith("http")){HYDRATE_INFO={connected:false,reason:"opened as a local file, not served over HTTP",storeWarn:null};return false;}
+  try{const r=await fetch("/api/state");
+    if(!r.ok){HYDRATE_INFO={connected:false,reason:`/api/state returned HTTP ${r.status}`,storeWarn:null};return false;}
+    const j=await r.json();
     if(j&&j.state&&j.state.agents){state=migrate(j.state,true);SERVER=true;state._feed=j.feed||null;
+      HYDRATE_INFO={connected:true,reason:null,storeWarn:(j.storeStatus&&j.storeStatus.warn)||null};
       const fb=$("feed-badge");
       if(fb&&j.feed)fb.textContent=j.feed==="sim"?"SIM · real odds":j.feed==="live"?"LIVE · Kalshi":"Mock feed";
-      return true;}}catch(e){}
+      return true;}
+    HYDRATE_INFO={connected:false,reason:"/api/state returned an unexpected shape",storeWarn:null};
+  }catch(e){HYDRATE_INFO={connected:false,reason:"/api/state fetch failed ("+((e&&e.message)||e)+")",storeWarn:null};}
   return false;}
+function connBanner(){
+  const el=$("conn-banner");if(!el)return;
+  if(!SERVER){el.hidden=false;el.className="warn";
+    el.innerHTML=`⚠ <b>Local demo mode</b> — not connected to the live server (${HYDRATE_INFO.reason||"unknown"}). Real bets from the poller/cron will NOT appear here; the games below are hardcoded samples. Fix on Vercel: set <code>STORE=kv</code> and connect a KV/Upstash store (Storage tab), plus <code>FEED=sim</code> and <code>ODDS_API_KEY</code>, then redeploy.`;return;}
+  if(HYDRATE_INFO.storeWarn){el.hidden=false;el.className="info";
+    el.innerHTML=`⚠ <b>Storage not persistent</b> — ${HYDRATE_INFO.storeWarn}`;return;}
+  el.hidden=true;
+}
 (async()=>{try{await hydrate();render();}catch(e){
   // Never leave a blank page: surface the error instead of a silent white screen.
   const v=$("view-active");if(v)v.innerHTML=`<div class="empty" style="padding:24px">The board hit an error while rendering: <code>${(e&&e.message)||e}</code><br>Try Reset, or reload. If it persists, send me this message.</div>`;

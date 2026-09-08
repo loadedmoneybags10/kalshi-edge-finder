@@ -20,7 +20,7 @@ import {
   analyzeCard, confirmCard, tryPlace, recordCandidates, recordPriceHistory,
   snapshotBankroll, accountStats,
 } from "../lib/engine.mjs";
-import { loadState, saveState, storeKind } from "../lib/store.mjs";
+import { loadState, saveState, storeKind, storeStatus } from "../lib/store.mjs";
 
 const cents = m => ({ ask: m.yes_ask / 100, bid: m.yes_bid / 100, last: m.last_price / 100, volume: m.volume });
 const iso = () => new Date().toISOString();
@@ -198,7 +198,7 @@ export async function runPoll(scope = "all") {
   snapshotBankroll(state);
   await saveState(state);
   const credits = oddsCredits();
-  return { store: storeKind(), source: feedMode(),
+  return { store: storeKind(), storeStatus: storeStatus(), source: feedMode(),
     scanned, games, newConsensusPlays: placed, noTrade, stats: accountStats(state),
     credits: {
       leaguesScanned: comps.length, skippedOffSeason, paidFetches,

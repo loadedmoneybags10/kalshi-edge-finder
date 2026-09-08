@@ -9,7 +9,7 @@
 // the poller, not the client, so the client can't inflate the ledger.
 // ============================================================================
 
-import { loadState, saveState, storeKind } from "../lib/store.mjs";
+import { loadState, saveState, storeKind, storeStatus } from "../lib/store.mjs";
 import { initLedger, agentIds, RISK_DEFAULT, accountStats } from "../lib/engine.mjs";
 import { analyticsSummary } from "../lib/analytics.mjs";
 import { feedMode } from "../lib/providers.mjs";
@@ -18,7 +18,7 @@ export default async function handler(req, res) {
   try {
     if (req.method === "GET") {
       const state = await loadState();
-      res.status(200).json({ store: storeKind(), feed: feedMode(), state, stats: accountStats(state), analytics: analyticsSummary(state) });
+      res.status(200).json({ store: storeKind(), storeStatus: storeStatus(), feed: feedMode(), state, stats: accountStats(state), analytics: analyticsSummary(state) });
       return;
     }
     if (req.method === "POST") {
