@@ -665,7 +665,9 @@ const confTier=c=>c==null?"—":c>=95?"95%+":c>=90?"90-94%":c>=85?"85-89%":"<85%
 // Daily bankroll snapshot for the equity chart (one point per calendar day).
 function snapshotBankroll(st){
   const today=new Date().toISOString().slice(0,10),bk=r2((st.agents.consensus||{}).bankroll||st.startingBankroll);
-  st.bankrollHistory=st.bankrollHistory||[{d:today,bk}];
+  // Guard the EMPTY-array case (a fresh reset has bankrollHistory:[]) — [] is
+  // truthy, so `||` wouldn't catch it and last would be undefined → crash.
+  if(!st.bankrollHistory||!st.bankrollHistory.length){st.bankrollHistory=[{d:today,bk}];return}
   const last=st.bankrollHistory[st.bankrollHistory.length-1];
   if(last.d===today)last.bk=bk;else st.bankrollHistory.push({d:today,bk});
 }
@@ -2055,7 +2057,11 @@ async function hydrate(){
       if(fb&&j.feed)fb.textContent=j.feed==="sim"?"SIM · real odds":j.feed==="live"?"LIVE · Kalshi":"Mock feed";
       return true;}}catch(e){}
   return false;}
-(async()=>{await hydrate();render();})();
+(async()=>{try{await hydrate();render();}catch(e){
+  // Never leave a blank page: surface the error instead of a silent white screen.
+  const v=$("view-active");if(v)v.innerHTML=`<div class="empty" style="padding:24px">The board hit an error while rendering: <code>${(e&&e.message)||e}</code><br>Try Reset, or reload. If it persists, send me this message.</div>`;
+  console.error(e);
+}})();
 // Server mode: quietly re-pull /api/state every 3 min so the board reflects the
 // latest cron run (new plays, settled results) with no manual reload and no API
 // credits (this only reads our own KV-backed state).
