@@ -2001,4 +2001,8 @@ async function hydrate(){
       return true;}}catch(e){}
   return false;}
 (async()=>{await hydrate();render();})();
+// Server mode: quietly re-pull /api/state every 3 min so the board reflects the
+// latest cron run (new plays, settled results) with no manual reload and no API
+// credits (this only reads our own KV-backed state).
+setInterval(async()=>{ if(SERVER){ try{ if(await hydrate())render(); }catch(e){} } }, 180000);
 </script>

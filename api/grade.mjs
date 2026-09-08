@@ -35,7 +35,11 @@ export async function runGrade(scope = "all") {
   const before = accountStats(state);
   const graded = [];
 
-  for (const comp of pickComps(scope)) {
+  // Credit-saver: only fetch scores for leagues that actually have OPEN bets to
+  // settle. Grading a league with nothing open would just waste scores credits.
+  const openLeagues = new Set((state.positions || []).filter(p => p.status === "open").map(p => p.league));
+  const comps = pickComps(scope).filter(c => openLeagues.has(c.key) || openLeagues.has(c.sport));
+  for (const comp of comps) {
     let scores;
     try { scores = await fetchScores(comp.key); } catch { continue; }
     const mapper = RESULT_OF[comp.sport];
