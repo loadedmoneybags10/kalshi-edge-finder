@@ -2029,11 +2029,12 @@ function renderSettings(){
 function renderLogs(){
   const kindColor={start:"var(--gold)",done:"var(--green)",grade:"var(--blue)",slate:"var(--purple)",bankroll:"var(--ink)",offseason:"var(--muted)",skip:"var(--faint)",error:"var(--red)"};
   const logs=state.logs||[];
-  $("logs").innerHTML=`<div style="margin-bottom:12px"><button class="btn primary" id="logs-run">▶ Run daily automation now</button></div>`+
+  const lastRun=LASTRUN?`<div class="logbox" style="margin-bottom:12px;white-space:pre-wrap;border-color:rgba(232,164,74,.35)"><b>Last automation run</b>\n${LASTRUN}</div>`:"";
+  $("logs").innerHTML=`<div style="margin-bottom:12px"><button class="btn primary" id="logs-run">▶ Run daily automation now</button></div>`+lastRun+
     (logs.length?`<div class="logbox">`+logs.map(e=>`<div class="logline"><span class="logts mono">${new Date(e.ts).toLocaleString()}</span>
       <span class="logkind" style="color:${kindColor[e.kind]||"var(--muted)"}">${e.kind}</span><span>${e.msg}</span></div>`).join("")+`</div>`
     :`<div class="empty">No automation actions logged yet.</div>`);
-  $("logs-run").onclick=()=>{runDailyAutomation(state,{force:true});save();render()};
+  $("logs-run").onclick=()=>{ if(SERVER){$("run-auto").click();} else {runDailyAutomation(state,{force:true});save();render();} };
 }
 function prov(){
   $("prov").innerHTML=`Sources: ${Object.values(SOURCES).map(s=>s.name).join(" · ")}. `+
@@ -2045,9 +2046,37 @@ function prov(){
 $("reset").onclick=async()=>{if(!confirm("Reset the bankroll and clear all wagers/records/logs back to $1,000?"))return;
   if(SERVER){await fetch("/api/state",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({reset:1})});await hydrate();render();return;}
   state=initLedger(agentIds());save();render();};
+// Human-readable summary of a /api/poll response (so a 0-plays run explains itself).
+function pollSummary(pr){
+  if(!pr)return"No response from /api/poll.";
+  if(pr.error)return"Poll error: "+pr.error;
+  const c=pr.credits||{},errs=(pr.scanned||[]).filter(s=>s.error);
+  const lines=[
+    `Feed mode: ${pr.source}${pr.source!=="sim"?"  ⚠ set FEED=sim in Vercel env for real odds":""}`,
+    `Games scanned: ${pr.games} across ${c.leaguesScanned??"?"} in-season league(s)${c.skippedOffSeason?` (${c.skippedOffSeason} off-season skipped)`:""}`,
+    `New plays placed: ${(pr.newConsensusPlays||[]).length}`,
+    `Rejected (no-trade): ${pr.noTrade??"?"}`,
+    `Odds credits: ${c.paidFetches??0} paid this run · remaining: ${c.remaining??"n/a"} · markets: ${c.markets||"?"}`,
+  ];
+  (pr.newConsensusPlays||[]).forEach(p=>lines.push("  + "+p));
+  if(errs.length){lines.push("Feed errors:");errs.forEach(s=>lines.push(`  ! ${s.comp}: ${s.error}`));}
+  if(!pr.games&&!errs.length)lines.push("No games returned — likely no in-season fixtures right now, or the Odds API key isn't set/valid.");
+  if(pr.games&&!(pr.newConsensusPlays||[]).length&&!errs.length)lines.push("Games found but none cleared the net-EV gate. Lower SIM_EDGE creates fewer plays; raise it for more.");
+  return lines.join("\n");
+}
 $("run-auto").onclick=async()=>{
-  if(SERVER){await fetch("/api/poll?sport=mlb");await fetch("/api/close?force=1");await fetch("/api/grade?sport=mlb");await hydrate();activeView="logs";localStorage.setItem(KEY+"_view",activeView);render();return;}
+  if(SERVER){
+    const btn=$("run-auto");btn.disabled=true;btn.textContent="Running…";
+    try{
+      const pr=await(await fetch("/api/poll")).json();   // ALL sports
+      await fetch("/api/close?force=1");await fetch("/api/grade");
+      LASTRUN=pollSummary(pr);
+    }catch(e){LASTRUN="Automation error: "+(e.message||e);}
+    btn.disabled=false;btn.textContent="▶ Run daily automation";
+    await hydrate();activeView="logs";localStorage.setItem(KEY+"_view",activeView);render();return;
+  }
   runDailyAutomation(state,{force:true});activeView="logs";localStorage.setItem(KEY+"_view",activeView);save();render();};
+let LASTRUN="";
 // ---- boot: hydrate the shared ledger over HTTP; else use localStorage (standalone) ----
 async function hydrate(){
   if(!location.protocol.startsWith("http"))return false;
