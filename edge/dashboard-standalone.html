@@ -251,7 +251,7 @@
     <div class="mtabs" id="ltabs"></div>
     <div class="mtabs" id="mtabs"></div>
     <div class="edges" id="confirmed"></div>
-    <section>
+    <section id="settle-section">
       <div class="sec-head"><span class="sec-title">Settle &amp; grade</span></div>
       <div class="sec-sub" id="settle-sub"></div>
       <div class="settle-grid" id="settle"></div>
@@ -1453,7 +1453,7 @@ function load(){
 // Bring a saved account up to the current schema WITHOUT wiping it. Everything
 // here is additive: new agents get a fresh $1,000, missing fields get defaults,
 // and settled results / realized P&L are never touched.
-function migrate(s){
+function migrate(s,serverMode){
   if(!s)return initLedger(agentIds());
   s.startingBankroll=s.startingBankroll||START;
   s.positions=s.positions||[];
@@ -1469,9 +1469,11 @@ function migrate(s){
     if(p.notes==null)p.notes="";
     if(p.reason==null)p.reason="";
   });
-  // Void still-OPEN bets on fixtures that no longer exist (a removed market can
-  // never settle) — refund the paper stake. Settled bets are kept as history.
-  s.positions=s.positions.filter(p=>{
+  // Void still-OPEN bets on fixtures that no longer exist (a removed CARDS market
+  // can never settle) — refund the paper stake. Settled bets are kept as history.
+  // SKIP in server mode: there the server owns real fixtures (not in CARDS) and
+  // settlement, so voiding here would wrongly delete every real placed bet.
+  if(!serverMode)s.positions=s.positions.filter(p=>{
     if(p.status!=="open"||fightById(p.fightId))return true;
     const a=s.agents[p.agentId];
     if(a){a.bankroll=r2(a.bankroll+p.stake);a.staked=r2(Math.max(0,a.staked-p.stake));a.openCount=Math.max(0,a.openCount-1)}
@@ -1510,7 +1512,58 @@ function render(){
   prov();save();
 }
 function renderBankroll(){bankrollPanel();perfStats();}
+/* ===== SERVER-MODE RENDERING =====
+   In server mode the poller/cron places bets on REAL games whose fixture IDs
+   aren't in the hardcoded CARDS, so we render straight from server state
+   (open positions + stored candidate decisions) instead of re-analyzing CARDS. */
+function decFromPos(p){
+  const contracts=p.contracts||1, feePc=(p.fees||0)/contracts, slipPc=(p.estimatedSlippage||0)/contracts;
+  const model=p.modelProb??p.fairProb, consv=p.conservativeProb??model, cost=p.price+feePc+slipPc;
+  return {modelProb:model,consensusProb:p.consensusProb??model,uncertainty:p.uncertainty??0,conservativeProb:consv,
+    execPrice:p.price,probEdgePts:p.probEdge??(model-p.price),grossReturn:p.grossEv??p.edgeRoi??0,
+    feePerContract:feePc,slipPerContract:slipPc,costPerContract:cost,netEdgePts:consv-cost,netReturn:p.netEv??0,
+    signalQuality:p.signalQuality??p.confidence??0,signalFactors:{},divergencePenalty:1,staleness:p.staleness??0,
+    dispersion:p.dispersion??0,nBooks:p.nBooks??null,divergence:p.marketDivergence??0,spread:p.spread??0,
+    volume:p.liquidity??0,decision:"TRADE",rejectReason:null};
+}
+const dayOf=t=>t?String(t).slice(0,10):"upcoming";
+function posToEdge(p){return {agentId:p.agentId,fightId:p.fixtureId||p.fightId,fightName:p.fixtureName||p.fightName,
+  fightSlot:dayOf(p.commenceTime),league:p.league,sport:p.sport,marketKey:p.marketKey,marketLabel:p.marketLabel,
+  marketType:p.marketType,side:p.side,sideName:p.sideName,oppName:p.opposingTeam||"",commenceTime:p.commenceTime,
+  decision:"TRADE",confidence:p.signalQuality??p.confidence??0,netEv:p.netEv,dec:decFromPos(p)};}
+function candToEdge(d){return {agentId:"consensus",fightId:d.fixtureId,fightName:d.fixtureName,fightSlot:dayOf(d.commenceTime),
+  league:d.league,sport:d.sport,marketKey:d.marketKey,marketLabel:d.marketLabel,marketType:d.marketType,side:d.side,
+  sideName:d.sideName,oppName:d.oppName||"",commenceTime:d.commenceTime,decision:d.decision,confidence:d.signalQuality,netEv:d.netReturn,dec:d};}
+const openConsensus=()=>state.positions.filter(p=>p.agentId==="consensus"&&p.status==="open");
+function sportSwitchServer(){
+  const tabName={ufc:"UFC",mls:"Soccer",mlb:"MLB"},open=openConsensus();
+  $("sportswitch").innerHTML=["mlb","mls","ufc"].map(sp=>{
+    const n=open.filter(p=>p.sport===sp).length;
+    return `<button class="sport-tab ${activeSport===sp?"active":""}" role="tab" data-s="${sp}">
+      <span class="emoji">${({mlb:"⚾",mls:"⚽",ufc:"🥊"})[sp]}</span><span>${tabName[sp]}</span><small>${n} open</small></button>`;
+  }).join("");
+  $("sportswitch").querySelectorAll("button").forEach(b=>b.onclick=()=>{activeSport=b.dataset.s;localStorage.setItem(KEY+"_sport",activeSport);filter="all";leagueFilter="all";render()});
+}
+function renderActiveServer(){
+  sportSwitchServer();
+  const s=$("settle-section");if(s)s.style.display="none"; // settling is automatic server-side
+  let mine=openConsensus().filter(p=>p.sport===activeSport).map(posToEdge);
+  const present=[...new Set(openConsensus().filter(p=>p.sport==="mls").map(p=>p.league))];
+  leagueTabs(mine,activeSport==="mls"?["all",...present]:null);
+  if(activeSport==="mls"&&leagueFilter!=="all")mine=mine.filter(e=>(e.league||"mls")===leagueFilter);
+  mtabs(mine);
+  const feedTxt=state._feed==="sim"?"real book odds + simulated Kalshi":state._feed==="live"?"live Kalshi":"mock feed";
+  $("edge-sub").innerHTML=`Live from your Kalshi paper account — <b>open</b> plays the server placed on real games (${feedTxt}). Cleared the net-EV gate + ${EC.sig.gate}/100 signal quality. Auto-refreshes every 3 min; settles to Profile automatically.`;
+  const openPos=e=>state.positions.find(p=>p.agentId==="consensus"&&(p.fixtureId||p.fightId)===e.fightId&&p.marketKey===e.marketKey);
+  const list=mine.filter(e=>filter==="all"||e.marketType===filter)
+    .sort((a,b)=>new Date(a.commenceTime||8.64e15)-new Date(b.commenceTime||8.64e15));
+  $("confirmed").innerHTML=list.length?list.map(e=>edgeCard(e,true,openPos(e))).join(""):
+    `<div class="empty">No open plays yet. Trigger a poll (<code>/api/poll</code>) or wait for the daily cron — new plays land here automatically.</div>`;
+  const rej=(state.candidates||[]).filter(d=>d.decision==="NO_TRADE"&&d.sport===activeSport&&(activeSport!=="mls"||leagueFilter==="all"||(d.league||"mls")===leagueFilter)).slice(0,10).map(candToEdge);
+  edgeList("rejected",rej,false);
+}
 function renderActive(){
+  if(SERVER)return renderActiveServer();
   const c=activeCard(),{confirmed,all}=confirmCard(analyzeCard(c));
   let mine=confirmed.filter(e=>e.agentId==="consensus");
   sportSwitch();
@@ -1527,11 +1580,11 @@ function renderActive(){
 }
 // Soccer league selector (mls/epl/laliga/seriea/bundesliga). Non-soccer tabs
 // clear it. Counts reflect confirmed consensus plays per competition.
-function leagueTabs(allMine){
+function leagueTabs(allMine,presentLeagues){
   const box=$("ltabs");if(!box)return;
   if(activeSport!=="mls"){box.innerHTML="";return}
   const order=["ucl","uel","uecl","epl","laliga","seriea","bundesliga","eflcup","facup","mls"],
-        present=[...new Set(activeCard().fights.map(f=>f.league||"mls"))];
+        present=presentLeagues?presentLeagues.filter(l=>l&&l!=="all"):[...new Set(activeCard().fights.map(f=>f.league||"mls"))];
   const leagues=["all",...order.filter(l=>present.includes(l)),...present.filter(l=>!order.includes(l))];
   const n=lg=>lg==="all"?allMine.length:allMine.filter(e=>(e.league||"mls")===lg).length;
   box.innerHTML=leagues.map(lg=>`<button class="mtab ${leagueFilter===lg?"active":""}" data-lg="${lg}">${lg==="all"?"All leagues":leagueLabel(lg)} · ${n(lg)}</button>`).join("");
@@ -1739,10 +1792,12 @@ function settle(){
 /* ===================== CALENDAR (weekly timeline) ===================== */
 function renderCalendar(){
   const DAYMS=864e5;
+  // Prefer the real kickoff timestamp (server plays); fall back to the KO map.
+  const koTime=p=>{const t=p.commenceTime?Date.parse(p.commenceTime):NaN;return isFinite(t)?t:koOfId(p.fightId||p.fixtureId)};
   const open=state.positions.filter(p=>p.agentId==="consensus"&&p.status==="open");
   const dayKey=t=>{const d=new Date(t);return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`};
   const buckets={},undated=[];
-  open.forEach(p=>{const t=koOfId(p.fightId);if(!isFinite(t)){undated.push(p);return}(buckets[dayKey(t)]=buckets[dayKey(t)]||[]).push(p)});
+  open.forEach(p=>{const t=koTime(p);if(!isFinite(t)){undated.push(p);return}(buckets[dayKey(t)]=buckets[dayKey(t)]||[]).push(p)});
   const today=new Date();today.setHours(0,0,0,0);
   const rows=[];
   for(let i=0;i<7;i++){const d=new Date(today.getTime()+i*DAYMS),key=dayKey(d.getTime());
@@ -1750,11 +1805,11 @@ function renderCalendar(){
   // plays beyond the 7-day window get their own trailing rows
   Object.keys(buckets).filter(k=>!rows.some(r=>r.key===k)).sort().forEach(k=>{
     const [y,m,da]=k.split("-").map(Number);rows.push({d:new Date(y,m-1,da),key:k,plays:buckets[k]})});
-  rows.forEach(r=>r.plays.sort((a,b)=>koOfId(a.fightId)-koOfId(b.fightId)));
+  rows.forEach(r=>r.plays.sort((a,b)=>koTime(a)-koTime(b)));
   const todayKey=dayKey(Date.now());
   const playRow=p=>`<div class="cal-play">
     <div class="cal-play-top"><span class="mkt-chip ${mktClass(p.marketType)}">${leagueLabel(p.league||p.sport)}</span>
-      <b>${p.fightName}</b><span class="cal-ko">⏱ ${fmtKO(p.fightId)}</span></div>
+      <b>${p.fightName}</b><span class="cal-ko">⏱ ${p.commenceTime?new Date(p.commenceTime).toLocaleString([],{weekday:"short",hour:"numeric",minute:"2-digit"}):fmtKO(p.fightId)}</span></div>
     <div class="cal-play-desc">Buy <b>${p.sideName}</b> · <span class="mono">${(p.price*100).toFixed(0)}¢</span> ·
       stake <span class="mono" style="color:var(--gold)">${money(p.stake)}</span> ·
       fair ${pct(p.fairProb)} · edge <span class="${p.edgeRoi>=0?"pos":"neg"}">${pct(p.edgeRoi)}</span> ·
@@ -1995,7 +2050,7 @@ $("run-auto").onclick=async()=>{
 async function hydrate(){
   if(!location.protocol.startsWith("http"))return false;
   try{const r=await fetch("/api/state");if(!r.ok)return false;const j=await r.json();
-    if(j&&j.state&&j.state.agents){state=migrate(j.state);SERVER=true;
+    if(j&&j.state&&j.state.agents){state=migrate(j.state,true);SERVER=true;state._feed=j.feed||null;
       const fb=$("feed-badge");
       if(fb&&j.feed)fb.textContent=j.feed==="sim"?"SIM · real odds":j.feed==="live"?"LIVE · Kalshi":"Mock feed";
       return true;}}catch(e){}
