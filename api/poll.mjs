@@ -196,9 +196,11 @@ export async function runPoll(scope = "all") {
 
   recordCandidates(state, consensusCandidates);
   snapshotBankroll(state);
-  await saveState(state);
+  const saved = await saveState(state);
   const credits = oddsCredits();
   return { store: storeKind(), storeStatus: storeStatus(), source: feedMode(),
+    persisted: saved.ok !== false, persistError: saved.ok === false ? saved.error : null,
+    openPositions: state.positions.filter(p => p.agentId === "consensus" && p.status === "open").length,
     scanned, games, newConsensusPlays: placed, noTrade, stats: accountStats(state),
     credits: {
       leaguesScanned: comps.length, skippedOffSeason, paidFetches,

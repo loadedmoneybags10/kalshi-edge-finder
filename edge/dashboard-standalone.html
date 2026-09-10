@@ -2065,6 +2065,8 @@ function pollSummary(pr){
   ];
   (pr.newConsensusPlays||[]).forEach(p=>lines.push("  + "+p));
   if(errs.length){lines.push("Feed errors:");errs.forEach(s=>lines.push(`  ! ${s.comp}: ${s.error}`));}
+  if(pr.persisted===false)lines.push(`⛔ SAVE FAILED — the ${(pr.newConsensusPlays||[]).length} plays were placed in memory but NOT saved to KV, so they WON'T appear in the tabs. Reason: ${pr.persistError||"unknown"}. Fix KV (see /api/health) and re-run.`);
+  else if((pr.newConsensusPlays||[]).length)lines.push(`✓ Persisted ${pr.openPositions??"?"} open play(s) to ${pr.store}. They should now appear under Active Bets / Calendar.`);
   if(pr.storeStatus&&pr.storeStatus.warn)lines.push("⚠ Persistence: "+pr.storeStatus.warn);
   if(!pr.games&&!errs.length)lines.push("No games returned — likely no in-season fixtures right now, or the Odds API key isn't set/valid.");
   if(pr.games&&!(pr.newConsensusPlays||[]).length&&!errs.length)lines.push("Games found but none cleared the net-EV gate. Raise SIM_EDGE (e.g. 0.09) for more plays.");
