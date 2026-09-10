@@ -120,6 +120,30 @@ test("migrate backfills new fields on legacy state without breaking it", () => {
   assert.ok(m.priceHistory && m.candidates && m.rejections);
 });
 
+test("NFL spread + points_ou settle correctly", () => {
+  const st = initLedger();
+  // Favorite (side a) -4.5. Bet side a (fav covers).
+  const spread = dec({ sport: "nfl", league: "nfl", fixtureId: "nfl:pack-bears", marketKey: "sp",
+    marketType: "spread", marketFamily: "spread", side: "a", sideName: "Packers -4.5" });
+  const { pos: sp } = tryPlace(st, spread);
+  // Over 44.5, betting Over (side a).
+  const total = dec({ sport: "nfl", league: "nfl", fixtureId: "nfl:pack-bears", marketKey: "ou",
+    marketType: "points_ou", marketFamily: "total", side: "a", sideName: "Over 44.5", backedTeam: null, direction: "total:over" });
+  const { pos: ov } = tryPlace(st, total);
+  const fixture = { id: "nfl:pack-bears", markets: [
+    { key: "sp", type: "spread", line: 4.5, favSide: "a" },
+    { key: "ou", type: "points_ou", line: 44.5 },
+  ] };
+  applyResult(st, fixture, { winner: "a", margin: 7, totalPoints: 47 }); // fav wins by 7 (covers 4.5); 47 > 44.5
+  assert.equal(sp.result, "win", "favorite covered the 4.5");
+  assert.equal(ov.result, "win", "total went over 44.5");
+  // Now a non-cover: fav wins by only 3 (< 4.5) → spread loses.
+  const st2 = initLedger();
+  const { pos: sp2 } = tryPlace(st2, dec({ sport: "nfl", fixtureId: "nfl:x-y", marketKey: "sp", marketType: "spread", marketFamily: "spread", side: "a", sideName: "Fav -4.5" }));
+  applyResult(st2, { id: "nfl:x-y", markets: [{ key: "sp", type: "spread", line: 4.5, favSide: "a" }] }, { winner: "a", margin: 3, totalPoints: 40 });
+  assert.equal(sp2.result, "loss", "won the game but didn't cover");
+});
+
 test("accountStats reflects net-of-fees profit and CLV", () => {
   const st = initLedger();
   const { pos } = tryPlace(st, dec());

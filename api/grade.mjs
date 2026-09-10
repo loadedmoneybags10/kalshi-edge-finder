@@ -11,13 +11,13 @@
 // ============================================================================
 
 import { fetchScores } from "../lib/providers.mjs";
-import { resultFromScore, soccerResultFromScore, ufcResultFromScore } from "../lib/normalize.mjs";
+import { resultFromScore, soccerResultFromScore, ufcResultFromScore, nflResultFromScore } from "../lib/normalize.mjs";
 import { applyResult, accountStats, snapshotBankroll, pushReport, logAuto } from "../lib/engine.mjs";
 import { loadState, saveState, storeKind } from "../lib/store.mjs";
 import { pickComps } from "./poll.mjs";
 import { overlap } from "../lib/match.mjs";
 
-const RESULT_OF = { mlb: resultFromScore, mls: soccerResultFromScore, ufc: ufcResultFromScore };
+const RESULT_OF = { mlb: resultFromScore, nfl: nflResultFromScore, mls: soccerResultFromScore, ufc: ufcResultFromScore };
 
 // Find the stored fixture for a completed score event: same sport, and both of
 // the event's teams recognizable in the fixture's two sides.

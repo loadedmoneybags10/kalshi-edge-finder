@@ -424,7 +424,7 @@ const EC={
   gate:{minNetEv:.03,minEdgePts:.02,minConsvEdge:.005,minVol:500,maxSpread:.10,maxUnc:.12,maxDisp:.06},
 };
 const wstd=(vals,ws,mu)=>{let n=0,d=0;for(let i=0;i<vals.length;i++){const v=vals[i],w=ws[i]??1;if(isFinite(v)&&w>0){n+=w*(v-mu)**2;d+=w}}return d>0?Math.sqrt(n/d):0};
-const MFAM={winner:"moneyline",ml:"moneyline",runline:"spread",spread:"spread",runs_ou:"total",goals_ou:"total",rounds:"total",totals:"total",match3:"result",btts:"btts",finish:"method"};
+const MFAM={winner:"moneyline",ml:"moneyline",runline:"spread",spread:"spread",runs_ou:"total",goals_ou:"total",rounds:"total",totals:"total",points_ou:"total",match3:"result",btts:"btts",finish:"method"};
 function corrTags(fight,mk,side){
   const fam=MFAM[mk.type]||mk.type||"other",A=fight.sideA,B=fight.sideB;let backed=null,opp=null,dir;
   if(fam==="moneyline"){backed=side==="a"?A:B;opp=side==="a"?B:A;dir=`team:${backed}`}
@@ -549,9 +549,14 @@ function resolveSide(mk,res){
   if(mk.type==="rounds")return res.method?((res.method==="dec"||res.endRound>Math.floor(mk.line))?"a":"b"):null; // a=Over
   if(mk.type==="goals_ou")return res.totalGoals==null?null:(res.totalGoals>mk.line?"a":"b");                     // a=Over
   if(mk.type==="runs_ou")return res.totalRuns==null?null:(res.totalRuns>mk.line?"a":"b");                        // a=Over
+  if(mk.type==="points_ou")return res.totalPoints==null?null:(res.totalPoints>mk.line?"a":"b");                 // a=Over (NFL)
   if(mk.type==="runline"){                                                       // a=favorite -1.5, b=underdog +1.5
     if(!res.winner||res.margin==null)return null;
     return (res.winner===mk.favSide&&res.margin>=2)?"a":"b";
+  }
+  if(mk.type==="spread"){                                                         // a=favorite -line, b=underdog +line (NFL)
+    if(!res.winner||res.margin==null)return null;
+    return (res.winner===mk.favSide&&res.margin>mk.line)?"a":"b";
   }
   return null;
 }
@@ -594,8 +599,8 @@ function fightExposure(st,fid){
 }
 // ---- PRIMARY-account stats & records (the bankroll model). Primary = the
 // consensus / funded Kalshi account; the other agents are shadow "books". ----
-const sportLabel=s=>({ufc:"MMA",mls:"Soccer",mlb:"Baseball"}[s]||s);
-const leagueLabel=s=>({ufc:"UFC",mls:"MLS",mlb:"MLB",epl:"EPL",laliga:"La Liga",seriea:"Serie A",bundesliga:"Bundesliga",eflcup:"EFL Cup",facup:"FA Cup",ucl:"Champions League",uel:"Europa League",uecl:"Conference League"}[s]||s);
+const sportLabel=s=>({ufc:"MMA",mls:"Soccer",mlb:"Baseball",nfl:"NFL"}[s]||s);
+const leagueLabel=s=>({ufc:"UFC",mls:"MLS",mlb:"MLB",nfl:"NFL",epl:"EPL",laliga:"La Liga",seriea:"Serie A",bundesliga:"Bundesliga",eflcup:"EFL Cup",facup:"FA Cup",ucl:"Champions League",uel:"Europa League",uecl:"Conference League"}[s]||s);
 const primaryBets=st=>st.positions.filter(p=>p.agentId==="consensus");
 function accountStats(st){
   const R=st.risk||RISK_DEFAULT(),a=st.agents.consensus||{bankroll:st.startingBankroll};
@@ -1552,11 +1557,11 @@ function pickDefaultSport(){
   if(best){activeSport=best[0];try{localStorage.setItem(KEY+"_sport",activeSport)}catch(e){}}
 }
 function sportSwitchServer(){
-  const tabName={ufc:"UFC",mls:"Soccer",mlb:"MLB"},open=openConsensus();
-  $("sportswitch").innerHTML=["mlb","mls","ufc"].map(sp=>{
+  const tabName={ufc:"UFC",mls:"Soccer",mlb:"MLB",nfl:"NFL"},open=openConsensus();
+  $("sportswitch").innerHTML=["mlb","nfl","mls","ufc"].map(sp=>{
     const n=open.filter(p=>p.sport===sp).length;
     return `<button class="sport-tab ${activeSport===sp?"active":""}" role="tab" data-s="${sp}">
-      <span class="emoji">${({mlb:"⚾",mls:"⚽",ufc:"🥊"})[sp]}</span><span>${tabName[sp]}</span><small>${n} open</small></button>`;
+      <span class="emoji">${({mlb:"⚾",mls:"⚽",ufc:"🥊",nfl:"🏈"})[sp]}</span><span>${tabName[sp]}</span><small>${n} open</small></button>`;
   }).join("");
   $("sportswitch").querySelectorAll("button").forEach(b=>b.onclick=()=>{activeSport=b.dataset.s;localStorage.setItem(KEY+"_sport",activeSport);filter="all";leagueFilter="all";render()});
 }
@@ -1678,6 +1683,8 @@ function mtabs(mine){
     ?[["all","All"],["match3","Match 1X2"],["goals_ou","Goals O/U"],["btts","BTTS"]]
     :activeSport==="mlb"
     ?[["all","All"],["winner","Moneyline"],["runline","Run Line"],["runs_ou","Runs O/U"]]
+    :activeSport==="nfl"
+    ?[["all","All"],["winner","Moneyline"],["spread","Spread"],["points_ou","Points O/U"]]
     :[["all","All"],["winner","Winner"],["finish","Method"],["rounds","Rounds O/U"]];
   $("mtabs").innerHTML=opts.map(([k,l])=>{const n=k==="all"?mine.length:mine.filter(e=>e.marketType===k).length;
     return `<button class="mtab ${filter===k?"active":""}" data-m="${k}">${l} · ${n}</button>`}).join("");
@@ -1844,7 +1851,7 @@ function renderCalendar(){
   $("calendar").innerHTML=html+(undated.length?`<div class="note" style="margin-top:10px">${undated.length} open play(s) have no scheduled kickoff and aren't on the timeline.</div>`:"");
 }
 /* ===================== PROFILE (immutable settled archive) ===================== */
-const BETTYPE={winner:"Moneyline / Winner",match3:"Match 1X2",finish:"Method",rounds:"Rounds O/U",goals_ou:"Goals O/U",runs_ou:"Runs O/U",runline:"Run Line",btts:"BTTS"};
+const BETTYPE={winner:"Moneyline / Winner",match3:"Match 1X2",finish:"Method",rounds:"Rounds O/U",goals_ou:"Goals O/U",runs_ou:"Runs O/U",points_ou:"Points O/U",runline:"Run Line",spread:"Spread",btts:"BTTS"};
 function timeCut(t){const n=new Date();switch(t){
   case"24h":return Date.now()-DAY;case"7d":return Date.now()-7*DAY;case"4w":return Date.now()-28*DAY;case"12m":return Date.now()-365*DAY;
   case"month":return new Date(n.getFullYear(),n.getMonth(),1).getTime();case"year":return new Date(n.getFullYear(),0,1).getTime();default:return 0}}
