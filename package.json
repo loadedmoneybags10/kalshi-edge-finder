@@ -6,6 +6,7 @@
   "description": "Kalshi multi-sport betting edge finder — paper trading.",
   "scripts": {
     "test": "node --test 'test/**/*.test.mjs'",
+    "daily": "node api/daily.mjs",
     "poll": "node api/poll.mjs",
     "poll:mlb": "node api/poll.mjs --sport=mlb"
   },

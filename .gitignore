@@ -3,3 +3,8 @@ data/
 
 .env
 .env.local
+
+# Generated locally by `npm run daily` (large; rebuilt each run).
+# journal-export.json is intentionally NOT ignored — it's the small data file
+# you push so the hosted artifact can be updated.
+edge/dashboard-local.html

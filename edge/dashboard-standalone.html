@@ -1448,6 +1448,9 @@ const mktClass=t=>({winner:"mkt-winner",match3:"mkt-winner",finish:"mkt-finish",
 let filter="all", leagueFilter="all", activeSport=localStorage.getItem(KEY+"_sport")||localStorage.getItem("kalshi_edge_finder_multisport_v3_sport")||"ufc";
 let state=migrate(load());
 let SERVER=false; // true once hydrated from /api/state (dashboard served over HTTP)
+// A real, accumulating paper-trading journal (real odds + real results) can be
+// baked in here by the local daily runner / artifact update. null → demo seed.
+var SEED_STATE=null; /*__JOURNAL_INJECT__*/
 function activeCard(){return CARDS[activeSport]}
 function fightById(fid){
   for(const c of Object.values(CARDS)){const f=c.fights.find(x=>x.id===fid);if(f)return f}
@@ -1589,7 +1592,7 @@ function renderActiveServer(){
   edgeList("rejected",rej,false);
 }
 function renderActive(){
-  if(SERVER||state._seeded)return renderActiveServer();
+  if(SERVER||state._seeded||state._journal)return renderActiveServer();
   const c=activeCard(),{confirmed,all}=confirmCard(analyzeCard(c));
   let mine=confirmed.filter(e=>e.agentId==="consensus");
   sportSwitch();
@@ -2123,8 +2126,11 @@ async function hydrate(){
   return false;}
 function connBanner(){
   const el=$("conn-banner");if(!el)return;
+  if(!SERVER&&state._journal){el.hidden=false;el.className="info";
+    const upd=state.bankrollHistory&&state.bankrollHistory.length?state.bankrollHistory[state.bankrollHistory.length-1].d:"";
+    el.innerHTML=`📈 <b>Live paper journal</b> — real book odds + real game results, placed by the net-EV engine and accumulating day over day. This is the real edge test (CLV &amp; calibration on real outcomes). Last updated ${upd}.`;return;}
   if(!SERVER&&state._seeded){el.hidden=false;el.className="info";
-    el.innerHTML=`📊 <b>Self-contained demo</b> — a full multi-sport slate (MLB · NFL · Soccer · UFC) with the live decision engine, running entirely in your browser. All data is local; use <b>Reset</b> to reshuffle the slate.`;return;}
+    el.innerHTML=`📊 <b>Self-contained demo</b> — simulated slate (MLB · NFL · Soccer · UFC) to show the engine + UI. NOTE: outcomes are modeled from our own probabilities, so this does NOT prove a real edge — the live paper journal (real odds + real results) does. Use <b>Reset</b> to reshuffle.`;return;}
   if(!SERVER){el.hidden=false;el.className="warn";
     el.innerHTML=`⚠ <b>Local demo mode</b> — not connected to the live server (${HYDRATE_INFO.reason||"unknown"}). Real bets from the poller/cron will NOT appear here; the games below are hardcoded samples. Fix on Vercel: set <code>STORE=kv</code> and connect a KV/Upstash store (Storage tab), plus <code>FEED=sim</code> and <code>ODDS_API_KEY</code>, then redeploy.`;return;}
   if(HYDRATE_INFO.storeWarn){el.hidden=false;el.className="info";
@@ -2198,7 +2204,10 @@ function seedBoard(){
 }
 (async()=>{try{
   await hydrate();
-  if(!SERVER&&(!state.positions||!state.positions.length))seedBoard();
+  if(!SERVER){
+    if(SEED_STATE&&SEED_STATE.agents){state=migrate(SEED_STATE,true);state._journal=true;save();}
+    else if(!state.positions||!state.positions.length){seedBoard();}
+  }
   pickDefaultSport();render();}catch(e){
   // Never leave a blank page: surface the error instead of a silent white screen.
   const v=$("view-active");if(v)v.innerHTML=`<div class="empty" style="padding:24px">The board hit an error while rendering: <code>${(e&&e.message)||e}</code><br>Try Reset, or reload. If it persists, send me this message.</div>`;
