@@ -18,7 +18,13 @@ export default async function handler(req, res) {
   try {
     if (req.method === "GET") {
       const state = await loadState();
-      res.status(200).json({ store: storeKind(), storeStatus: storeStatus(), feed: feedMode(), state, stats: accountStats(state), analytics: analyticsSummary(state) });
+      const analytics = analyticsSummary(state);
+      const stats = accountStats(state);
+      // Strip internal poller caches from the CLIENT payload — the dashboard
+      // never uses them and they (oddsCache = full raw odds for every scanned
+      // game) can bloat the response enough to make hydrate slow or fail.
+      const { oddsCache, priceHistory, ...clientState } = state;
+      res.status(200).json({ store: storeKind(), storeStatus: storeStatus(), feed: feedMode(), state: clientState, stats, analytics });
       return;
     }
     if (req.method === "POST") {

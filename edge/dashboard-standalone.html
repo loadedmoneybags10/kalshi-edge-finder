@@ -1542,6 +1542,15 @@ function candToEdge(d){return {agentId:"consensus",fightId:d.fixtureId,fightName
   league:d.league,sport:d.sport,marketKey:d.marketKey,marketLabel:d.marketLabel,marketType:d.marketType,side:d.side,
   sideName:d.sideName,oppName:d.oppName||"",commenceTime:d.commenceTime,decision:d.decision,confidence:d.signalQuality,netEv:d.netReturn,dec:d};}
 const openConsensus=()=>state.positions.filter(p=>p.agentId==="consensus"&&p.status==="open");
+// Land on a sport that actually has open plays (default is UFC, which may be
+// empty). Only switches when the current sport has none — respects user clicks.
+function pickDefaultSport(){
+  if(!SERVER)return;const open=openConsensus();if(!open.length)return;
+  if(open.some(p=>p.sport===activeSport))return;
+  const by={};open.forEach(p=>by[p.sport]=(by[p.sport]||0)+1);
+  const best=Object.entries(by).sort((a,b)=>b[1]-a[1])[0];
+  if(best){activeSport=best[0];try{localStorage.setItem(KEY+"_sport",activeSport)}catch(e){}}
+}
 function sportSwitchServer(){
   const tabName={ufc:"UFC",mls:"Soccer",mlb:"MLB"},open=openConsensus();
   $("sportswitch").innerHTML=["mlb","mls","ufc"].map(sp=>{
@@ -1564,8 +1573,11 @@ function renderActiveServer(){
   const openPos=e=>state.positions.find(p=>p.agentId==="consensus"&&(p.fixtureId||p.fightId)===e.fightId&&p.marketKey===e.marketKey);
   const list=mine.filter(e=>filter==="all"||e.marketType===filter)
     .sort((a,b)=>new Date(a.commenceTime||8.64e15)-new Date(b.commenceTime||8.64e15));
+  const others=openConsensus().filter(p=>p.sport!==activeSport);
+  const otherNames=[...new Set(others.map(p=>({mlb:"MLB",mls:"Soccer",ufc:"UFC"}[p.sport]||p.sport)))];
+  const hint=others.length?` <b>${others.length} open play(s) on other sports</b> — check the ${otherNames.join(" / ")} tab${otherNames.length>1?"s":""} above.`:" Trigger a poll (<code>/api/poll</code>) or wait for the daily cron.";
   $("confirmed").innerHTML=list.length?list.map(e=>edgeCard(e,true,openPos(e))).join(""):
-    `<div class="empty">No open plays yet. Trigger a poll (<code>/api/poll</code>) or wait for the daily cron — new plays land here automatically.</div>`;
+    `<div class="empty">No open plays for ${({mlb:"MLB",mls:"Soccer",ufc:"UFC"}[activeSport]||activeSport)} right now.${hint}</div>`;
   const rej=(state.candidates||[]).filter(d=>d.decision==="NO_TRADE"&&d.sport===activeSport&&(activeSport!=="mls"||leagueFilter==="all"||(d.league||"mls")===leagueFilter)).slice(0,10).map(candToEdge);
   edgeList("rejected",rej,false);
 }
@@ -2108,7 +2120,7 @@ function connBanner(){
     el.innerHTML=`⚠ <b>Storage not persistent</b> — ${HYDRATE_INFO.storeWarn}`;return;}
   el.hidden=true;
 }
-(async()=>{try{await hydrate();render();}catch(e){
+(async()=>{try{await hydrate();pickDefaultSport();render();}catch(e){
   // Never leave a blank page: surface the error instead of a silent white screen.
   const v=$("view-active");if(v)v.innerHTML=`<div class="empty" style="padding:24px">The board hit an error while rendering: <code>${(e&&e.message)||e}</code><br>Try Reset, or reload. If it persists, send me this message.</div>`;
   console.error(e);
