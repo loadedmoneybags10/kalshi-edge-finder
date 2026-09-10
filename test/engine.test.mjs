@@ -3,7 +3,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  initLedger, tryPlace, settleMarket, snapshotClose, accountStats, migrate,
+  initLedger, tryPlace, settleMarket, applyResult, snapshotClose, accountStats, migrate,
   recordCandidates, REJECT, RISK_DEFAULT,
 } from "../lib/engine.mjs";
 
