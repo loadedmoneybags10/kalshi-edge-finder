@@ -1592,20 +1592,14 @@ function renderActiveServer(){
   edgeList("rejected",rej,false);
 }
 function renderActive(){
-  if(SERVER||state._seeded||state._journal)return renderActiveServer();
-  const c=activeCard(),{confirmed,all}=confirmCard(analyzeCard(c));
-  let mine=confirmed.filter(e=>e.agentId==="consensus");
-  sportSwitch();
-  leagueTabs(mine);                         // soccer only — pick a competition
-  if(activeSport==="mls"&&leagueFilter!=="all")mine=mine.filter(e=>(e.league||"mls")===leagueFilter);
-  mtabs(mine);
-  const leagueNote=activeSport==="mls"&&leagueFilter!=="all"?` · ${leagueLabel(leagueFilter)} only`:"";
-  $("edge-sub").innerHTML=offseason(c)
-    ?`<b>${c.label}</b> — offseason / no scheduled games. This tab is intentionally empty; the next automation run repopulates it when games return.`
-    :`Your funded Kalshi account's <b>open</b> plays for <b>${c.label}</b>${leagueNote} — cleared the <b>net-EV gate</b> (positive EV on the conservative probability after fees &amp; slippage) and the ${EC.sig.gate}/100 signal-quality gate. Settled bets move to Profile automatically.`;
-  todaysCard(mine);
-  edgeList("rejected",all.filter(e=>e.decision!=="TRADE"&&(activeSport!=="mls"||leagueFilter==="all"||(e.league||"mls")===leagueFilter)).slice(0,8),false);
-  settle();
+  if(SERVER||state._journal)return renderActiveServer();
+  // Standalone with no real journal: show NOTHING fabricated (no hardcoded CARDS).
+  sportSwitchServer();
+  const s=$("settle-section");if(s)s.style.display="none";
+  $("ltabs").innerHTML="";$("mtabs").innerHTML="";
+  $("edge-sub").innerHTML="This board shows only <b>real</b> games from your local daily run — nothing is invented here.";
+  $("confirmed").innerHTML=`<div class="empty" style="padding:22px 12px;line-height:1.6">No real games loaded yet.<br>Run <code>ODDS_API_KEY=your_key npm run daily</code> on your machine to pull today's real events, odds and results — then open <code>edge/dashboard-local.html</code>, or push <code>edge/journal-export.json</code> so this page can be updated.</div>`;
+  $("rejected").innerHTML="";
 }
 // Soccer league selector (mls/epl/laliga/seriea/bundesliga). Non-soccer tabs
 // clear it. Counts reflect confirmed consensus plays per competition.
@@ -2051,8 +2045,8 @@ function renderSettings(){
   </div>
   <div class="note" style="margin-top:10px">Existing sportsbook models and edge calculations are unchanged — these controls only govern bankroll sizing and risk limits.</div>`;
   $("settings").querySelectorAll("[data-set]").forEach(b=>b.onclick=()=>{const k=b.dataset.set,v=b.dataset.v;state.risk[k]=k==="mode"?v:+v;save();render()});
-  $("set-run").onclick=()=>{ if(SERVER){$("run-auto").click();} else {seedBoard();pickDefaultSport();render();} };
-  $("set-reset").onclick=()=>{if(confirm("Reshuffle the demo slate?")){ if(SERVER){$("reset").click();} else {seedBoard();pickDefaultSport();render();} }};
+  $("set-run").onclick=()=>{ if(SERVER){$("run-auto").click();} else {$("run-auto").click();} };
+  $("set-reset").onclick=()=>{ $("reset").click(); };
 }
 /* ===================== AUTOMATION LOGS ===================== */
 function renderLogs(){
@@ -2074,7 +2068,7 @@ function prov(){
 }
 $("reset").onclick=async()=>{if(!confirm("Reset the bankroll and clear all wagers/records/logs back to $1,000?"))return;
   if(SERVER){await fetch("/api/state",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({reset:1})});await hydrate();render();return;}
-  seedBoard();pickDefaultSport();render();}; // standalone: reshuffle the demo slate
+  state=initLedger(agentIds());state._journal=SEED_STATE?true:false;save();pickDefaultSport();render();}; // clear back to empty (never fabricate)
 // Human-readable summary of a /api/poll response (so a 0-plays run explains itself).
 function pollSummary(pr){
   if(!pr)return"No response from /api/poll.";
@@ -2107,7 +2101,7 @@ $("run-auto").onclick=async()=>{
     btn.disabled=false;btn.textContent="▶ Run daily automation";
     await hydrate();activeView="logs";localStorage.setItem(KEY+"_view",activeView);render();return;
   }
-  seedBoard();pickDefaultSport();activeView="active";localStorage.setItem(KEY+"_view",activeView);render();};
+  alert("This board only shows REAL games. Run  ODDS_API_KEY=your_key npm run daily  on your machine to pull real odds + place real plays, then open edge/dashboard-local.html (or push edge/journal-export.json so Claude can update this page).");};
 let LASTRUN="";
 // ---- boot: hydrate the shared ledger over HTTP; else use localStorage (standalone) ----
 let HYDRATE_INFO={connected:false,reason:null,storeWarn:null};
@@ -2129,85 +2123,17 @@ function connBanner(){
   if(!SERVER&&state._journal){el.hidden=false;el.className="info";
     const upd=state.bankrollHistory&&state.bankrollHistory.length?state.bankrollHistory[state.bankrollHistory.length-1].d:"";
     el.innerHTML=`📈 <b>Live paper journal</b> — real book odds + real game results, placed by the net-EV engine and accumulating day over day. This is the real edge test (CLV &amp; calibration on real outcomes). Last updated ${upd}.`;return;}
-  if(!SERVER&&state._seeded){el.hidden=false;el.className="info";
-    el.innerHTML=`📊 <b>Self-contained demo</b> — simulated slate (MLB · NFL · Soccer · UFC) to show the engine + UI. NOTE: outcomes are modeled from our own probabilities, so this does NOT prove a real edge — the live paper journal (real odds + real results) does. Use <b>Reset</b> to reshuffle.`;return;}
   if(!SERVER){el.hidden=false;el.className="warn";
-    el.innerHTML=`⚠ <b>Local demo mode</b> — not connected to the live server (${HYDRATE_INFO.reason||"unknown"}). Real bets from the poller/cron will NOT appear here; the games below are hardcoded samples. Fix on Vercel: set <code>STORE=kv</code> and connect a KV/Upstash store (Storage tab), plus <code>FEED=sim</code> and <code>ODDS_API_KEY</code>, then redeploy.`;return;}
+    el.innerHTML=`⛳ <b>No real games loaded.</b> This board only ever shows <b>real</b> matches — nothing here is invented. To load today's real events, odds and results, run on your machine:<br><code>ODDS_API_KEY=your_key npm run daily</code><br>then open <code>edge/dashboard-local.html</code>, or push <code>edge/journal-export.json</code> and tell Claude to update this page. See <code>docs/DAILY.md</code>.`;return;}
   if(HYDRATE_INFO.storeWarn){el.hidden=false;el.className="info";
     el.innerHTML=`⚠ <b>Storage not persistent</b> — ${HYDRATE_INFO.storeWarn}`;return;}
   el.hidden=true;
 }
-/* ===== SELF-CONTAINED SEED (standalone / no-server mode) =====
-   Fills every tab with a realistic multi-sport slate — open plays across MLB,
-   NFL, EPL, La Liga, Champions League and UFC, plus ~3 weeks of settled history
-   — all in the new decision schema, entirely in the browser (localStorage). */
-function seedBoard(){
-  const DAY=864e5,rnd=(a,b)=>a+Math.random()*(b-a),pick=a=>a[Math.floor(Math.random()*a.length)];
-  const st=initLedger(agentIds());
-  const SP={
-    mlb:{sport:"mlb",league:"mlb",games:[["Los Angeles Dodgers","San Diego Padres"],["New York Yankees","Boston Red Sox"],["Houston Astros","Seattle Mariners"],["Atlanta Braves","Philadelphia Phillies"],["Baltimore Orioles","Tampa Bay Rays"]],mkts:[["ml","Moneyline","winner","moneyline",0],["ou","Runs O/U 8.5","runs_ou","total",8.5],["rl","Run Line -1.5","runline","spread",1.5]]},
-    nfl:{sport:"nfl",league:"nfl",games:[["Kansas City Chiefs","Buffalo Bills"],["Philadelphia Eagles","Dallas Cowboys"],["San Francisco 49ers","Seattle Seahawks"],["Baltimore Ravens","Cincinnati Bengals"]],mkts:[["ml","Moneyline","winner","moneyline",0],["ou","Points O/U 44.5","points_ou","total",44.5],["sp","Spread 3.5","spread","spread",3.5]]},
-    epl:{sport:"mls",league:"epl",games:[["Arsenal","Chelsea"],["Liverpool","Manchester City"],["Manchester United","Tottenham"]],mkts:[["match","Match Result (1X2)","match3","result",0],["ou","Goals O/U 2.5","goals_ou","total",2.5]]},
-    laliga:{sport:"mls",league:"laliga",games:[["Real Madrid","Barcelona"],["Atletico Madrid","Sevilla"]],mkts:[["match","Match Result (1X2)","match3","result",0],["ou","Goals O/U 2.5","goals_ou","total",2.5]]},
-    ucl:{sport:"mls",league:"ucl",games:[["Bayern Munich","Paris Saint-Germain"],["Inter","Manchester City"]],mkts:[["match","Match Result (1X2)","match3","result",0],["ou","Goals O/U 2.5","goals_ou","total",2.5]]},
-    ufc:{sport:"ufc",league:"ufc",games:[["Islam Makhachev","Charles Oliveira"],["Alex Pereira","Jiri Prochazka"],["Sean OMalley","Merab Dvalishvili"]],mkts:[["winner","Winner","winner","moneyline",0],["ou","Rounds O/U 2.5","rounds","total",2.5]]},
-  };
-  const sideOf=(mkType,a,h,line)=>{ // -> [sideName, opposingName, backedTeam, direction]
-    if(mkType==="match3"){const o=pick(["home","away","draw"]);return o==="draw"?["Draw",`${a} / ${h}`,null,"draw"]:o==="home"?[a,h,a,"team:"+a]:[h,a,h,"team:"+h];}
-    if(mkType==="winner")return Math.random()<.5?[a,h,a,"team:"+a]:[h,a,h,"team:"+h];
-    if(mkType==="spread"||mkType==="runline")return Math.random()<.5?[`${a} -${line}`,h,a,"team:"+a]:[`${h} +${line}`,a,h,"team:"+h];
-    return Math.random()<.5?[`Over ${line}`,`Under ${line}`,null,"total:over"]:[`Under ${line}`,`Over ${line}`,null,"total:under"]; // totals
-  };
-  const mkPos=(key,g,gi,mk,dayOffset)=>{
-    const [a,h]=g,[mkKey,mkLabel,mkType,fam,line]=mk,S=SP[key];
-    const [sideName,opp,backed,direction]=sideOf(mkType,a,h,line);
-    const price=r4(rnd(0.12,0.60)),model=clamp01(price+rnd(0.06,0.16)),unc=r4(rnd(0.02,0.045)),consv=clamp01(model-unc);
-    const fee=0.07*price*(1-price),slip=r4(rnd(0.008,0.02)),cost=price+fee+slip,net=(consv-cost)/cost,gross=model/price-1;
-    const sq=Math.round(rnd(72,96)),stake=r2(rnd(3,26)),contracts=r2(stake/price),open=dayOffset>0;
-    const t=Date.now()+dayOffset*DAY,fid=`${S.league}:g${gi}`;
-    const p={id:uid(),agentId:"consensus",sport:S.sport,league:S.league,fixtureId:fid,fightId:fid,fixtureName:`${a} vs. ${h}`,fightName:`${a} vs. ${h}`,commenceTime:new Date(t).toISOString(),eventId:fid,
-      backedTeam:backed,opposingTeam:opp,marketKey:mkKey,marketLabel:mkLabel,marketType:mkType,marketFamily:fam,line,side:"a",sideName,direction,
-      stake,contracts,price,actualFillPrice:r4(price+slip),fees:r2(fee*contracts),estimatedSlippage:r2(slip*contracts),
-      kalshiProb:price,consensusProb:r4(model),modelProb:r4(model),uncertainty:unc,conservativeProb:r4(consv),
-      probEdge:r4(model-price),grossEv:r4(gross),netEv:r4(net),signalQuality:sq,liquidity:Math.round(rnd(2000,25000)),spread:r4(rnd(.01,.04)),staleness:0,marketDivergence:0,dispersion:r4(rnd(0,.02)),nBooks:3,
-      fairProb:r4(model),closingProb:price,clv:null,edgeRoi:r4(gross),confidence:sq,reason:"",notes:"",status:open?"open":"settled",placedAt:new Date(t-DAY*(open?0:1)).toISOString(),result:null,grade:null,pnl:0,units:r2(stake/10)};
-    if(!open){const won=Math.random()<consv,closing=clamp01(price+(won?rnd(.01,.06):-rnd(0,.04)));
-      p.closingProb=r4(closing);p.clv=r4(closing-price);p.result=won?"win":"loss";p.grade=p.result;
-      p.pnl=r2((won?contracts:0)-stake-p.fees);p.settledAt=new Date(t+DAY*0.3).toISOString();}
-    return p;
-  };
-  // Open plays: first two games of every sport, every market.
-  Object.keys(SP).forEach(key=>{const S=SP[key];S.games.slice(0,2).forEach((g,gi)=>S.mkts.forEach(mk=>st.positions.push(mkPos(key,g,gi,mk,rnd(0.2,5)))));});
-  // Settled history: ~3 plays/day for 20 days back.
-  for(let d=1;d<=20;d++)for(let n=0;n<3;n++){const key=pick(Object.keys(SP)),S=SP[key],gi=Math.floor(rnd(0,S.games.length)),g=S.games[gi],mk=pick(S.mkts);st.positions.push(mkPos(key,g,gi+100+d,mk,-d));}
-  // Rejected candidates for "Below the gate".
-  st.candidates=Object.keys(SP).slice(0,4).map((key,i)=>{const S=SP[key],g=S.games[0],mk=S.mkts[0],[a,h]=g;
-    const model=r4(rnd(.4,.6)),exec=r4(model-rnd(.005,.02));
-    return {agentId:"consensus",sport:S.sport,league:S.league,fixtureId:`${S.league}:rej${i}`,fixtureName:`${a} vs. ${h}`,commenceTime:new Date(Date.now()+rnd(0.5,4)*DAY).toISOString(),
-      marketKey:mk[0],marketLabel:mk[1],marketType:mk[2],side:"a",sideName:a,oppName:h,execPrice:exec,modelProb:model,consensusProb:model,uncertainty:r4(rnd(.03,.05)),conservativeProb:r4(model-.04),
-      probEdgePts:r4(model-exec),grossReturn:r4(model/exec-1),feePerContract:r4(.07*exec*(1-exec)),slipPerContract:.012,costPerContract:r4(exec+.02),netEdgePts:-.01,netReturn:r4(-rnd(.005,.03)),
-      signalQuality:Math.round(rnd(55,69)),signalFactors:{},divergencePenalty:1,dispersion:r4(rnd(0,.05)),nBooks:3,divergence:0,staleness:0,spread:.03,volume:8000,decision:"NO_TRADE",rejectReason:"net EV below threshold after uncertainty and fees"};});
-  // Roll up bankroll + agents from settled results.
-  const settled=st.positions.filter(p=>p.status==="settled"),open=st.positions.filter(p=>p.status==="open");
-  const pnl=settled.reduce((s,p)=>s+p.pnl,0),openStake=open.reduce((s,p)=>s+p.stake,0);
-  const a=st.agents.consensus;a.bankroll=r2(START+pnl-openStake);a.staked=r2(openStake);a.openCount=open.length;a.settledCount=settled.length;
-  a.wins=settled.filter(p=>p.grade==="win").length;a.losses=settled.filter(p=>p.grade==="loss").length;
-  Object.keys(st.agents).filter(id=>id!=="consensus").forEach(id=>{st.agents[id].bankroll=r2(START+rnd(-40,90));});
-  // Bankroll history (21 pts) + a few daily reports.
-  let bk=START;const hist=[];for(let d=21;d>=0;d--){bk=r2(bk+rnd(-12,20));hist.push({d:new Date(Date.now()-d*DAY).toISOString().slice(0,10),bk});}
-  hist[hist.length-1].bk=a.bankroll;st.bankrollHistory=hist;
-  st.reports=Array.from({length:7},(_,i)=>{const day=settled.filter(p=>p.settledAt&&p.settledAt.slice(0,10)===new Date(Date.now()-i*DAY).toISOString().slice(0,10));
-    return {date:new Date(Date.now()-i*DAY).toISOString().slice(0,10),ts:new Date(Date.now()-i*DAY).toISOString(),settled:day.length,w:day.filter(p=>p.grade==="win").length,l:day.filter(p=>p.grade==="loss").length,push:0,void:0,dayPnl:r2(day.reduce((s,p)=>s+p.pnl,0)),bankroll:a.bankroll,newPlays:day.length};});
-  st.logs=[{ts:new Date().toISOString(),kind:"done",msg:`Seeded a self-contained demo: ${open.length} open plays across MLB · NFL · Soccer · UFC, ${settled.length} settled.`}];
-  st._seeded=true;
-  state=st;save();
-}
 (async()=>{try{
   await hydrate();
-  if(!SERVER){
-    if(SEED_STATE&&SEED_STATE.agents){state=migrate(SEED_STATE,true);state._journal=true;save();}
-    else if(!state.positions||!state.positions.length){seedBoard();}
-  }
+  // Real data only. If a real journal is baked in (SEED_STATE, from the local
+  // daily runner), load it. Otherwise leave the board EMPTY — never invent games.
+  if(!SERVER&&SEED_STATE&&SEED_STATE.agents){state=migrate(SEED_STATE,true);state._journal=true;save();}
   pickDefaultSport();render();}catch(e){
   // Never leave a blank page: surface the error instead of a silent white screen.
   const v=$("view-active");if(v)v.innerHTML=`<div class="empty" style="padding:24px">The board hit an error while rendering: <code>${(e&&e.message)||e}</code><br>Try Reset, or reload. If it persists, send me this message.</div>`;
