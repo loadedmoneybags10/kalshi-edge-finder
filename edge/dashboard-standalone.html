@@ -1518,7 +1518,7 @@ function nav(){
   $("nav").querySelectorAll("button").forEach(x=>x.onclick=()=>{activeView=x.dataset.view;localStorage.setItem(KEY+"_view",activeView);render()});
 }
 function render(){
-  if(!SERVER&&!state._seeded){rescanAll();autoDaily();}snapshotBankroll(state); // seeded/self-contained + server modes own their own data
+  snapshotBankroll(state); // real data only — never auto-place on hardcoded CARDS
   $("sub").textContent="Autonomous multi-sport betting — settles, archives, recomputes, and re-slates daily.";
   nav();connBanner();
   document.querySelectorAll(".view").forEach(v=>v.style.display="none");
@@ -1576,10 +1576,8 @@ function renderActiveServer(){
   leagueTabs(mine,activeSport==="mls"?["all",...present]:null);
   if(activeSport==="mls"&&leagueFilter!=="all")mine=mine.filter(e=>(e.league||"mls")===leagueFilter);
   mtabs(mine);
-  const feedTxt=state._feed==="sim"?"real book odds + simulated Kalshi":state._feed==="live"?"live Kalshi":"mock feed";
-  $("edge-sub").innerHTML=state._seeded
-    ?`<b>Open</b> plays across MLB · NFL · Soccer · UFC, each scored by the full net-EV decision engine (conservative probability after fees &amp; slippage, ${EC.sig.gate}/100 signal-quality gate). Settled plays are in Profile; <b>Reset</b> reshuffles the slate.`
-    :`Your funded Kalshi paper account's <b>open</b> plays the server placed on real games (${feedTxt}). Cleared the net-EV gate + ${EC.sig.gate}/100 signal quality. Auto-refreshes every 3 min; settles to Profile automatically.`;
+  const feedTxt=state._feed==="live"?"real book odds vs real Kalshi prices":state._feed==="sim"?"real book odds + simulated Kalshi":"real games";
+  $("edge-sub").innerHTML=`<b>Open</b> plays on <b>real games</b> (${feedTxt}), each scored by the net-EV decision engine — conservative probability after fees &amp; slippage, ${EC.sig.gate}/100 signal-quality gate. Settled plays move to Profile with their result.`;
   const openPos=e=>state.positions.find(p=>p.agentId==="consensus"&&(p.fixtureId||p.fightId)===e.fightId&&p.marketKey===e.marketKey);
   const list=mine.filter(e=>filter==="all"||e.marketType===filter)
     .sort((a,b)=>new Date(a.commenceTime||8.64e15)-new Date(b.commenceTime||8.64e15));
