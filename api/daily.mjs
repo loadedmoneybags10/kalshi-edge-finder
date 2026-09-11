@@ -18,6 +18,10 @@
 // accumulating over weeks — unlike the demo seed, whose outcomes are modeled.
 // ============================================================================
 
+// Default to LIVE (real book odds vs REAL Kalshi prices). Override with
+// FEED=sim to test the pipeline with a simulated Kalshi price instead.
+if (!process.env.FEED) process.env.FEED = "live";
+
 import { runPoll } from "./poll.mjs";
 import { runClose } from "./close.mjs";
 import { runGrade } from "./grade.mjs";
@@ -52,8 +56,13 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const out = await runDaily();
   const s = out.poll.stats, c = out.poll.credits || {};
   console.log(`\n✅ Daily run complete — feed: ${out.feed}`);
-  if (out.feed !== "sim") console.log("   ⚠ Not using real odds. Set ODDS_API_KEY (auto-enables sim).");
-  console.log(`   Scanned ${out.poll.games} games · placed ${out.poll.newConsensusPlays.length} new plays · graded ${out.grade.gamesGraded}`);
+  if (out.feed === "mock") console.log("   ⚠ No ODDS_API_KEY — running on mock data. Set your key for real odds.");
+  const k = out.poll.kalshi;
+  if (k) {
+    console.log(`   Kalshi: ${k.openMarkets} open markets · matched ${k.gamesMatched}/${k.gamesScanned} games to real Kalshi prices`);
+    if (!k.gamesMatched) console.log("   ⚠ 0 games matched Kalshi. It may not list these sports right now — run `node api/kalshi-scan.mjs` and send Claude the output. (Or FEED=sim to test the logic.)");
+  }
+  console.log(`   Scanned ${out.poll.games} tradeable games · placed ${out.poll.newConsensusPlays.length} new plays · graded ${out.grade.gamesGraded}`);
   out.poll.newConsensusPlays.forEach(p => console.log("     + " + p));
   console.log(`   Bankroll $${s.bankroll} · ROI ${s.roi}% · record ${s.wins}-${s.losses} · CLV ${s.clv ?? "—"} pts`);
   if (c.remaining != null) console.log(`   Odds credits remaining: ${c.remaining}`);
