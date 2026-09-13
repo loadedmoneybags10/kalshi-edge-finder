@@ -29,10 +29,16 @@ import { loadState } from "../lib/store.mjs";
 import { feedMode } from "../lib/providers.mjs";
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 
+const step = m => process.stderr.write(`\n▶ ${m}…\n`);
+
 export async function runDaily() {
+  step("Grading finished games (real scores)");
   const grade = await runGrade("all");     // settle finished games (real scores)
+  step("Snapshotting closing lines (CLV)");
   const close = await runClose({ scope: "all" }); // snapshot closing lines (CLV)
+  step("Polling for today's plays (real odds + Kalshi)");
   const poll = await runPoll("all");       // place today's confirmed plays
+  step("Writing dashboard + journal export");
 
   const state = await loadState();
   const { oddsCache, priceHistory, ...journal } = state; // drop heavy internal caches

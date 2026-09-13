@@ -199,19 +199,27 @@ export async function runPoll(scope = "all") {
   const placed = [], consensusCandidates = [], scanned = [];
   let games = 0, noTrade = 0, paidFetches = 0;
 
+  const plog = process.env.POLL_QUIET ? () => {} : m => process.stderr.write(`   ${m}\n`);
+
   // Credit-saver: skip out-of-season leagues using the FREE /sports check.
+  plog("Checking which sports are in season (free /sports)…");
   const active = await fetchActiveSports(); // Set of active odds keys, or null (mock → scan all)
   const comps = pickComps(scope).filter(c => !active || active.has(c.oddsSport));
   const skippedOffSeason = active ? pickComps(scope).length - comps.length : 0;
+  plog(`Scanning ${comps.length} league(s): ${comps.map(c => c.key).join(", ") || "(none)"}`);
 
   // LIVE mode: fetch ALL open Kalshi markets ONCE (public, free) for matching.
   let kMarkets = null, kalshiMatched = 0, kalshiScanned = 0;
-  if (feedMode() === "live") { try { kMarkets = await fetchKalshiOpenMarkets(); } catch (e) { kMarkets = []; } }
+  if (feedMode() === "live") {
+    plog("Fetching all open Kalshi markets (once)…");
+    try { kMarkets = await fetchKalshiOpenMarkets(); } catch (e) { kMarkets = []; plog(`⚠ Kalshi fetch failed: ${String(e?.message || e)}`); }
+  }
 
   for (const comp of comps) {
     let c;
+    plog(`• ${comp.key}: fetching odds + analyzing…`);
     try { c = await buildCardFor(comp, state, kMarkets); if (c.paidFetch) paidFetches++; }
-    catch (e) { scanned.push({ comp: comp.key, error: String(e?.message || e) }); continue; }
+    catch (e) { plog(`  ${comp.key}: error — ${String(e?.message || e)}`); scanned.push({ comp: comp.key, error: String(e?.message || e) }); continue; }
     if (c.kalshiScanned != null) { kalshiScanned += c.kalshiScanned; kalshiMatched += c.kalshiMatched; }
     if (!c || !c.fights.length) { scanned.push({ comp: comp.key, games: 0 }); continue; }
     games += c.fights.length;
