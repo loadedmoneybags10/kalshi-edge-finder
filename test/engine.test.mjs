@@ -4,7 +4,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   initLedger, tryPlace, settleMarket, applyResult, snapshotClose, accountStats, migrate,
-  recordCandidates, REJECT, RISK_DEFAULT,
+  recordCandidates, confirmCard, REJECT, RISK_DEFAULT,
 } from "../lib/engine.mjs";
 
 // A confirmed consensus decision with sane defaults; override per test.
@@ -100,6 +100,17 @@ test("recordCandidates stores trades + rejections for the dashboard", () => {
   assert.equal(st.candidates.length, 2);
   assert.equal(st.rejections.length, 1);
   assert.equal(st.rejections[0].rejectCode, "NET_EV_BELOW_THRESHOLD");
+});
+
+test("gate rejects an implausibly large edge as suspicious (data error, not free money)", () => {
+  // A 30-pt raw edge should be treated as a data error, never traded.
+  const an = { fights: [{ markets: [{ candidates: [dec({ probEdgePts: 0.30 })] }] }] };
+  const { all } = confirmCard(an);
+  assert.equal(all[0].decision, "NO_TRADE");
+  assert.equal(all[0].rejectCode, "SUSPICIOUS_EDGE");
+  // A normal edge still passes the suspicious check (reaches TRADE).
+  const ok = confirmCard({ fights: [{ markets: [{ candidates: [dec({ probEdgePts: 0.10 })] }] }] });
+  assert.equal(ok.all[0].decision, "TRADE");
 });
 
 test("migrate backfills new fields on legacy state without breaking it", () => {
