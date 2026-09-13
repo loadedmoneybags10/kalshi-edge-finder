@@ -12,10 +12,10 @@
 //           GET /api/poll?sport=mlb           (one bucket)
 // ============================================================================
 
-import { fetchBookOdds, fetchKalshiMarkets, feedMode, fetchActiveSports, fetchKalshiOpenMarkets, oddsCredits, oddsConfig } from "../lib/providers.mjs";
+import { fetchBookOdds, fetchKalshiMarkets, feedMode, fetchActiveSports, fetchKalshiGameMarkets, oddsCredits, oddsConfig } from "../lib/providers.mjs";
 import { buildMlbFixture, buildSoccerFixture, buildUfcFixture, twoWayKalshi, booksBlock } from "../lib/normalize.mjs";
 import { buildSimCard } from "../lib/simkalshi.mjs";
-import { matchMoneyline } from "../lib/match.mjs";
+import { matchGameTwoSided } from "../lib/match.mjs";
 import { enabledCompetitions, COMPETITIONS } from "../lib/competitions.mjs";
 import { TIMING } from "../lib/config.mjs";
 import {
@@ -137,33 +137,34 @@ async function getOddsCached(state, comp) {
 
 const slug = n => String(n || "").toLowerCase().replace(/[^a-z0-9]+/g, "").slice(0, 6);
 
-// LIVE: real book odds vs REAL Kalshi prices. For each Odds game we find a real
-// Kalshi moneyline market by team name + date (lib/match.mjs). Matched games get
-// a moneyline fixture priced at the REAL Kalshi ask; unmatched games are SKIPPED
-// (never faked). Two-way winner only for now (MLB/NFL/UFC); 3-way soccer needs a
-// separate Kalshi structure we confirm via `npm run kalshi-scan` first.
-function buildLiveCard(comp, events, kMarkets) {
+// LIVE: real book odds vs REAL Kalshi prices. We pull the competition's Kalshi
+// single-game series (KXMLBGAME, etc.) — each game lists a "<Team> wins" YES
+// market per side — and pair each Odds game to its two Kalshi markets by team
+// name + date (lib/match.mjs → matchGameTwoSided). Matched games get a moneyline
+// fixture priced at BOTH sides' REAL Kalshi asks; unmatched games are SKIPPED
+// (never faked). Soccer draws aren't modeled here (two-way winner only).
+function buildLiveCard(comp, events, gameMarkets) {
   const fights = [];
   let matched = 0;
   for (const e of events || []) {
-    const ml = matchMoneyline(e, kMarkets || [], { dateWindowMs: 36 * 3600 * 1000 });
-    if (!ml) continue;
+    const g = matchGameTwoSided(e, gameMarkets || [], { dateWindowMs: 36 * 3600 * 1000 });
+    if (!g || !(g.away.ask > 0) || !(g.home.ask > 0)) continue; // need a real price on both sides
     matched++;
     const away = e.away_team, home = e.home_team;
-    const yesSide = ml.yesTeam === "away" ? "a" : "b"; // a = away
+    const blk = s => ({ ask: s.ask, bid: s.bid ?? s.ask, last: s.last ?? s.ask, volume: s.volume || 0 });
     fights.push({
       id: `${comp.league}:${slug(away)}-${slug(home)}`, sport: comp.sport, league: comp.league,
       name: `${away} vs. ${home}`, slot: `${e.commence_time?.slice(0, 10) || ""} · ${home}`,
       sideA: away, sideB: home, commenceTime: e.commence_time || null,
       markets: [{
         key: "ml", label: "Moneyline", type: "winner", a: away, b: home,
-        kalshi: twoWayKalshi(ml.yes, yesSide),
+        kalshi: { a: blk(g.away), b: blk(g.home) }, // a = away YES, b = home YES (both real)
         books: booksBlock(e, "h2h", oc => (oc.name === away ? "a" : oc.name === home ? "b" : null)),
       }],
     });
   }
   const c = card(comp.sport, comp.key.toUpperCase(), fights);
-  c.kalshiMatched = matched; c.kalshiScanned = (events || []).length;
+  c.kalshiMatched = matched; c.kalshiScanned = (events || []).length; c.kalshiOpen = (gameMarkets || []).length;
   return c;
 }
 
@@ -180,12 +181,13 @@ function withinWindow(events) {
 }
 
 // Build the right card for a competition by its engine bucket + feed mode.
-export async function buildCardFor(comp, state = {}, kMarkets = null) {
+export async function buildCardFor(comp, state = {}) {
   const mode = feedMode();
   if (mode === "live") {                          // REAL odds + REAL Kalshi prices
     const { events, cached } = await getOddsCached(state, comp);
     const kept = withinWindow(events);
-    const c = buildLiveCard(comp, kept, kMarkets);
+    const gameMarkets = await fetchKalshiGameMarkets(comp.key); // this comp's KX<SPORT>GAME series
+    const c = buildLiveCard(comp, kept, gameMarkets);
     c.paidFetch = !cached; c.windowSkipped = (events?.length || 0) - kept.length; return c;
   }
   if (mode === "sim") {                            // REAL odds + SIMULATED Kalshi
@@ -225,19 +227,18 @@ export async function runPoll(scope = "all") {
   const skippedOffSeason = active ? pickComps(scope).length - comps.length : 0;
   plog(`Scanning ${comps.length} league(s): ${comps.map(c => c.key).join(", ") || "(none)"}`);
 
-  // LIVE mode: fetch ALL open Kalshi markets ONCE (public, free) for matching.
-  let kMarkets = null, kalshiMatched = 0, kalshiScanned = 0;
-  if (feedMode() === "live") {
-    plog("Fetching all open Kalshi markets (once)…");
-    try { kMarkets = await fetchKalshiOpenMarkets(); } catch (e) { kMarkets = []; plog(`⚠ Kalshi fetch failed: ${String(e?.message || e)}`); }
-  }
+  // LIVE mode: each comp fetches its own Kalshi single-game series (KX<SPORT>GAME)
+  // inside buildCardFor — free, public, and far more efficient than the flooded
+  // bulk feed. We just tally coverage here.
+  let kalshiMatched = 0, kalshiScanned = 0, kalshiOpen = 0;
 
   for (const comp of comps) {
     let c;
-    plog(`• ${comp.key}: fetching odds + analyzing…`);
-    try { c = await buildCardFor(comp, state, kMarkets); if (c.paidFetch) paidFetches++; windowSkipped += c.windowSkipped || 0; }
+    plog(`• ${comp.key}: fetching odds + Kalshi ${comp.kalshiSeries || "(no series)"} + analyzing…`);
+    try { c = await buildCardFor(comp, state); if (c.paidFetch) paidFetches++; windowSkipped += c.windowSkipped || 0; }
     catch (e) { plog(`  ${comp.key}: error — ${String(e?.message || e)}`); scanned.push({ comp: comp.key, error: String(e?.message || e) }); continue; }
-    if (c.kalshiScanned != null) { kalshiScanned += c.kalshiScanned; kalshiMatched += c.kalshiMatched; }
+    if (c.kalshiScanned != null) { kalshiScanned += c.kalshiScanned; kalshiMatched += c.kalshiMatched; kalshiOpen += c.kalshiOpen || 0; }
+    if (feedMode() === "live" && c.kalshiMatched != null) plog(`  ${comp.key}: matched ${c.kalshiMatched}/${c.kalshiScanned} games to Kalshi (${c.kalshiOpen || 0} series markets)`);
     if (!c || !c.fights.length) { scanned.push({ comp: comp.key, games: 0 }); continue; }
     games += c.fights.length;
     scanned.push({ comp: comp.key, games: c.fights.length });
@@ -268,7 +269,7 @@ export async function runPoll(scope = "all") {
   return { store: storeKind(), storeStatus: storeStatus(), source: feedMode(),
     persisted: saved.ok !== false, persistError: saved.ok === false ? saved.error : null,
     openPositions: state.positions.filter(p => p.agentId === "consensus" && p.status === "open").length,
-    kalshi: feedMode() === "live" ? { openMarkets: kMarkets ? kMarkets.length : 0, gamesMatched: kalshiMatched, gamesScanned: kalshiScanned } : null,
+    kalshi: feedMode() === "live" ? { openMarkets: kalshiOpen, gamesMatched: kalshiMatched, gamesScanned: kalshiScanned } : null,
     scanned, games, newConsensusPlays: placed, noTrade, stats: accountStats(state),
     window: { minHours: TIMING.minHoursToStart, maxHours: TIMING.maxHoursToStart, skipped: windowSkipped },
     credits: {

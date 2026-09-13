@@ -5,7 +5,43 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   tokens, overlap, nameScore, marketMatchesGame, yesTeamOf, matchMoneyline, pairSlate,
+  dollarsBlock, matchGameTwoSided,
 } from "../lib/match.mjs";
+
+// ---- current Kalshi shape (KXMLBGAME): two "<Team> wins" YES markets/game,
+// prices as *_dollars STRINGS (0–1), volume as *_fp. Modeled on real output. ----
+test("dollarsBlock parses *_dollars strings and *_fp volume", () => {
+  const b = dollarsBlock({ yes_ask_dollars: "0.4500", yes_bid_dollars: "0.4200", last_price_dollars: "0.4500", volume_fp: "14.20" });
+  assert.equal(b.ask, 0.45); assert.equal(b.bid, 0.42); assert.equal(b.last, 0.45); assert.equal(b.volume, 14.2);
+});
+
+test("matchGameTwoSided pairs the two team markets and reads both real prices", () => {
+  const g = { away_team: "Miami Marlins", home_team: "Arizona Diamondbacks", commence_time: "2026-09-19T01:40:00Z" };
+  const markets = [
+    { ticker: "KXMLBGAME-26SEP152140MIAAZ-MIA", event_ticker: "KXMLBGAME-26SEP152140MIAAZ",
+      title: "Miami wins", yes_sub_title: "Miami", yes_ask_dollars: "0.4500", yes_bid_dollars: "0.4200", last_price_dollars: "0.4500", volume_fp: "14.20", close_time: "2026-09-19T01:40:00Z" },
+    { ticker: "KXMLBGAME-26SEP152140MIAAZ-AZ", event_ticker: "KXMLBGAME-26SEP152140MIAAZ",
+      title: "Arizona wins", yes_sub_title: "Arizona", yes_ask_dollars: "0.5900", yes_bid_dollars: "0.5400", last_price_dollars: "0.5400", volume_fp: "3.00", close_time: "2026-09-19T01:40:00Z" },
+    // an unrelated game's markets that must NOT match
+    { ticker: "KXMLBGAME-26SEP152138SEALAA-SEA", event_ticker: "KXMLBGAME-26SEP152138SEALAA",
+      title: "Seattle wins", yes_sub_title: "Seattle", yes_ask_dollars: "0.5400", close_time: "2026-09-19T01:38:00Z" },
+  ];
+  const r = matchGameTwoSided(g, markets);
+  assert.ok(r, "should match");
+  assert.equal(r.away.ask, 0.45); // Miami (away)
+  assert.equal(r.home.ask, 0.59); // Arizona (home)
+});
+
+test("matchGameTwoSided returns null when a side is missing or out of the date window", () => {
+  const g = { away_team: "Miami Marlins", home_team: "Arizona Diamondbacks", commence_time: "2026-09-19T01:40:00Z" };
+  const onlyOne = [{ event_ticker: "E1", yes_sub_title: "Miami", yes_ask_dollars: "0.45", close_time: "2026-09-19T01:40:00Z" }];
+  assert.equal(matchGameTwoSided(g, onlyOne), null);
+  const wrongDate = [
+    { event_ticker: "E2", yes_sub_title: "Miami", yes_ask_dollars: "0.45", close_time: "2026-10-01T00:00:00Z" },
+    { event_ticker: "E2", yes_sub_title: "Arizona", yes_ask_dollars: "0.59", close_time: "2026-10-01T00:00:00Z" },
+  ];
+  assert.equal(matchGameTwoSided(g, wrongDate), null);
+});
 
 const game = {
   home_team: "Cincinnati Reds", away_team: "San Diego Padres",

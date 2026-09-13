@@ -1,84 +1,69 @@
 // ============================================================================
-// api/diag-live.mjs — deep trace of the LIVE decision pipeline for real games.
+// api/diag-live.mjs — deep trace of the LIVE decision pipeline for real games,
+// using Kalshi's single-game series (KXMLBGAME / KXNFLGAME / …).
 //
 //   ODDS_API_KEY=your_key ODDS_MARKETS=h2h  node api/diag-live.mjs
 //
-// For the first few games that match a real Kalshi market, it prints EXACTLY
-// what the engine sees and decides:
-//   • which bookmakers the Odds API returned
-//   • whether booksBlock captured any of them (EMPTY = the bug)
-//   • the real Kalshi ask/bid per side
-//   • the consensus probability + book count
-//   • the final decision (TRADE / NO_TRADE + reason) — or why no candidate formed
+// For the first few games that match a real Kalshi market it prints:
+//   • the bookmakers the Odds API returned + whether booksBlock captured any
+//   • the REAL Kalshi ask on BOTH sides (from the KX<SPORT>GAME series)
+//   • the consensus probability, and the final decision (TRADE / NO_TRADE + why)
 // Paste the whole output back to Claude.
 // ============================================================================
 
 if (!process.env.FEED) process.env.FEED = "live";
 
-import { fetchBookOdds, fetchKalshiOpenMarkets } from "../lib/providers.mjs";
-import { matchMoneyline } from "../lib/match.mjs";
-import { twoWayKalshi, booksBlock } from "../lib/normalize.mjs";
+import { fetchBookOdds, fetchKalshiGameMarkets } from "../lib/providers.mjs";
+import { matchGameTwoSided } from "../lib/match.mjs";
+import { booksBlock } from "../lib/normalize.mjs";
 import { analyzeCard, confirmCard } from "../lib/engine.mjs";
+import { COMPETITIONS } from "../lib/competitions.mjs";
 
 const slug = n => String(n || "").toLowerCase().replace(/[^a-z0-9]+/g, "").slice(0, 6);
 const pct = x => (Number.isFinite(x) ? (x * 100).toFixed(1) + "%" : "—");
 
-function liveFight(comp, e, ml) {
+function liveFight(comp, e, g) {
   const away = e.away_team, home = e.home_team;
-  const yesSide = ml.yesTeam === "away" ? "a" : "b";
+  const blk = s => ({ ask: s.ask, bid: s.bid ?? s.ask, last: s.last ?? s.ask, volume: s.volume || 0 });
   return {
     id: `${comp}:${slug(away)}-${slug(home)}`, sport: comp, league: comp,
     name: `${away} vs. ${home}`, slot: "", sideA: away, sideB: home, commenceTime: e.commence_time || null,
     markets: [{
       key: "ml", label: "Moneyline", type: "winner", a: away, b: home,
-      kalshi: twoWayKalshi(ml.yes, yesSide),
+      kalshi: { a: blk(g.away), b: blk(g.home) },
       books: booksBlock(e, "h2h", oc => (oc.name === away ? "a" : oc.name === home ? "b" : null)),
     }],
   };
 }
 
-console.log("=== LIVE pipeline deep trace ===");
-const kMarkets = await fetchKalshiOpenMarkets();
-console.log("Kalshi open markets loaded:", kMarkets.length);
-
+console.log("=== LIVE pipeline deep trace (per-series Kalshi) ===");
 for (const comp of ["mlb", "nfl"]) {
-  let events = [];
+  const series = COMPETITIONS[comp]?.kalshiSeries;
+  let events = [], gameMarkets = [];
   try { events = await fetchBookOdds(comp); }
   catch (e) { console.log(`\n===== ${comp}: fetchBookOdds THREW: ${String(e?.message || e).slice(0, 200)}`); continue; }
-  console.log(`\n===== ${comp}: ${events.length} games from Odds API =====`);
-  if (events[0]) console.log("First game raw bookmaker keys:", (events[0].bookmakers || []).map(b => b.key).join(", ") || "(none)");
+  gameMarkets = await fetchKalshiGameMarkets(comp);
+  console.log(`\n===== ${comp}: ${events.length} Odds games · Kalshi ${series} has ${gameMarkets.length} open markets =====`);
+  if (gameMarkets[0]) console.log(`  sample Kalshi market: ${gameMarkets[0].ticker} | ${gameMarkets[0].yes_sub_title} | ask ${gameMarkets[0].yes_ask_dollars}`);
 
-  let shown = 0, dumped = false;
+  let shown = 0;
   for (const e of events) {
-    const ml = matchMoneyline(e, kMarkets, { dateWindowMs: 36 * 3600 * 1000 });
-    if (!ml) continue;
-    if (!dumped) {                    // one raw Kalshi market dump per sport
-      const m = ml.market;
-      console.log(`\n   RAW matched Kalshi market for "${e.away_team} @ ${e.home_team}":`);
-      console.log("     ticker:", m.ticker, "| title:", m.title, "| yes_sub_title:", m.yes_sub_title);
-      console.log("     price-ish fields:", JSON.stringify({
-        yes_bid: m.yes_bid, yes_ask: m.yes_ask, no_bid: m.no_bid, no_ask: m.no_ask,
-        last_price: m.last_price, volume: m.volume, volume_24h: m.volume_24h,
-        open_interest: m.open_interest, liquidity: m.liquidity, status: m.status, close_time: m.close_time,
-      }));
-      console.log("     ALL keys:", Object.keys(m).join(", "));
-      dumped = true;
-    }
-    const f = liveFight(comp, e, ml);
+    const g = matchGameTwoSided(e, gameMarkets, { dateWindowMs: 36 * 3600 * 1000 });
+    if (!g) continue;
+    const f = liveFight(comp, e, g);
     const mk = f.markets[0];
     console.log(`\n• ${f.name}  (${e.commence_time})`);
-    console.log("   bookmakers returned:", (e.bookmakers || []).map(b => b.key).join(", ") || "(none)");
-    console.log("   booksBlock captured :", Object.keys(mk.books).join(", ") || "(EMPTY  ← this is the bug)");
-    console.log("   kalshi  a.ask/b.ask :", mk.kalshi.a?.ask, "/", mk.kalshi.b?.ask, " vol", mk.kalshi.a?.volume);
+    console.log("   books captured :", Object.keys(mk.books).join(", ") || "(EMPTY)");
+    console.log("   kalshi ask a/b :", mk.kalshi.a.ask, "/", mk.kalshi.b.ask, " vol", mk.kalshi.a.volume, "/", mk.kalshi.b.volume);
     const an = analyzeCard({ sport: comp, fights: [f] });
     const am = an.fights[0].markets[0];
-    console.log("   consensus a/b       :", pct(am.cons.a?.consensus), "/", pct(am.cons.b?.consensus), " nBooks(a):", am.cons.a?.nBooks ?? 0);
+    console.log("   consensus a/b  :", pct(am.cons.a?.consensus), "/", pct(am.cons.b?.consensus), " nBooks(a):", am.cons.a?.nBooks ?? 0);
     const { candidates } = confirmCard(an);
-    console.log("   consensus candidates:", candidates.length || "0  (no decision formed → likely no book reads)");
     for (const d of candidates)
       console.log(`     -> ${d.sideName}: ${d.decision}${d.rejectReason ? " — " + d.rejectReason : ""}  (edge ${pct(d.probEdgePts)}, netEV ${pct(d.netReturn)}, sig ${d.signalQuality}/100)`);
-    if (++shown >= 3) break;
+    if (!candidates.length) console.log("     -> no decision formed");
+    if (++shown >= 4) break;
   }
-  if (!shown) console.log("   (no games matched a Kalshi market)");
+  if (!shown) console.log("   (no games matched the Kalshi game series)");
 }
 console.log("\n=== end ===");
