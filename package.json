@@ -8,6 +8,7 @@
     "test": "node --test 'test/**/*.test.mjs'",
     "daily": "node api/daily.mjs",
     "diag": "node api/diag.mjs",
+    "diag-live": "node api/diag-live.mjs",
     "kalshi-scan": "node api/kalshi-scan.mjs",
     "poll": "node api/poll.mjs",
     "poll:mlb": "node api/poll.mjs --sport=mlb"
