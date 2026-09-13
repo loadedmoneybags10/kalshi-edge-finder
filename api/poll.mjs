@@ -17,6 +17,7 @@ import { buildMlbFixture, buildSoccerFixture, buildUfcFixture, twoWayKalshi, boo
 import { buildSimCard } from "../lib/simkalshi.mjs";
 import { matchMoneyline } from "../lib/match.mjs";
 import { enabledCompetitions, COMPETITIONS } from "../lib/competitions.mjs";
+import { TIMING } from "../lib/config.mjs";
 import {
   analyzeCard, confirmCard, tryPlace, recordCandidates, recordPriceHistory,
   snapshotBankroll, accountStats,
@@ -166,16 +167,32 @@ function buildLiveCard(comp, events, kMarkets) {
   return c;
 }
 
+// Keep only games kicking off inside the trade timing window (config.TIMING).
+// Applied AFTER the odds cache, so tightening/loosening the window never forces
+// a refetch. Undated events (mock) are kept.
+function withinWindow(events) {
+  const now = Date.now();
+  const lo = now + TIMING.minHoursToStart * 3600e3, hi = now + TIMING.maxHoursToStart * 3600e3;
+  return (events || []).filter(e => {
+    const t = e.commence_time ? Date.parse(e.commence_time) : NaN;
+    return !Number.isFinite(t) || (t >= lo && t <= hi);
+  });
+}
+
 // Build the right card for a competition by its engine bucket + feed mode.
 export async function buildCardFor(comp, state = {}, kMarkets = null) {
   const mode = feedMode();
   if (mode === "live") {                          // REAL odds + REAL Kalshi prices
     const { events, cached } = await getOddsCached(state, comp);
-    const c = buildLiveCard(comp, events, kMarkets); c.paidFetch = !cached; return c;
+    const kept = withinWindow(events);
+    const c = buildLiveCard(comp, kept, kMarkets);
+    c.paidFetch = !cached; c.windowSkipped = (events?.length || 0) - kept.length; return c;
   }
   if (mode === "sim") {                            // REAL odds + SIMULATED Kalshi
     const { events, cached } = await getOddsCached(state, comp);
-    const c = buildSimCard(comp, events); c.paidFetch = !cached; return c;
+    const kept = withinWindow(events);
+    const c = buildSimCard(comp, kept);
+    c.paidFetch = !cached; c.windowSkipped = (events?.length || 0) - kept.length; return c;
   }
   if (comp.sport === "mlb") return pollMlbCard(); // mock ticker-matched
   if (comp.sport === "mls") return pollSoccerCard(comp.key);
@@ -197,7 +214,7 @@ export async function runPoll(scope = "all") {
   state.fixtures = state.fixtures || {};
   const now = Date.now();
   const placed = [], consensusCandidates = [], scanned = [];
-  let games = 0, noTrade = 0, paidFetches = 0;
+  let games = 0, noTrade = 0, paidFetches = 0, windowSkipped = 0;
 
   const plog = process.env.POLL_QUIET ? () => {} : m => process.stderr.write(`   ${m}\n`);
 
@@ -218,7 +235,7 @@ export async function runPoll(scope = "all") {
   for (const comp of comps) {
     let c;
     plog(`• ${comp.key}: fetching odds + analyzing…`);
-    try { c = await buildCardFor(comp, state, kMarkets); if (c.paidFetch) paidFetches++; }
+    try { c = await buildCardFor(comp, state, kMarkets); if (c.paidFetch) paidFetches++; windowSkipped += c.windowSkipped || 0; }
     catch (e) { plog(`  ${comp.key}: error — ${String(e?.message || e)}`); scanned.push({ comp: comp.key, error: String(e?.message || e) }); continue; }
     if (c.kalshiScanned != null) { kalshiScanned += c.kalshiScanned; kalshiMatched += c.kalshiMatched; }
     if (!c || !c.fights.length) { scanned.push({ comp: comp.key, games: 0 }); continue; }
@@ -253,6 +270,7 @@ export async function runPoll(scope = "all") {
     openPositions: state.positions.filter(p => p.agentId === "consensus" && p.status === "open").length,
     kalshi: feedMode() === "live" ? { openMarkets: kMarkets ? kMarkets.length : 0, gamesMatched: kalshiMatched, gamesScanned: kalshiScanned } : null,
     scanned, games, newConsensusPlays: placed, noTrade, stats: accountStats(state),
+    window: { minHours: TIMING.minHoursToStart, maxHours: TIMING.maxHoursToStart, skipped: windowSkipped },
     credits: {
       leaguesScanned: comps.length, skippedOffSeason, paidFetches,
       creditsPerCall: oddsConfig().creditsPerCall,

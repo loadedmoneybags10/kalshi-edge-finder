@@ -68,6 +68,8 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     console.log(`   Kalshi: ${k.openMarkets} open markets · matched ${k.gamesMatched}/${k.gamesScanned} games to real Kalshi prices`);
     if (!k.gamesMatched) console.log("   ⚠ 0 games matched Kalshi. It may not list these sports right now — run `node api/kalshi-scan.mjs` and send Claude the output. (Or FEED=sim to test the logic.)");
   }
+  const w = out.poll.window;
+  if (w) console.log(`   Timing window: games kicking off within ${w.maxHours}h · skipped ${w.skipped} game(s) outside it (tune with TIMING_MAX_HOURS)`);
   console.log(`   Scanned ${out.poll.games} tradeable games · placed ${out.poll.newConsensusPlays.length} new plays · graded ${out.grade.gamesGraded}`);
   out.poll.newConsensusPlays.forEach(p => console.log("     + " + p));
   console.log(`   Bankroll $${s.bankroll} · ROI ${s.roi}% · record ${s.wins}-${s.losses} · CLV ${s.clv ?? "—"} pts`);
