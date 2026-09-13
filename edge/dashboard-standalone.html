@@ -490,7 +490,7 @@ function confirmCard(an){
 }
 
 /* ============================ LEDGER ============================ */
-const START=1000,KF=.25,MAXF=.03,MINS=1;
+const START=300,KF=.25,MAXF=.03,MINS=1;
 const r2=x=>Math.round((+x+Number.EPSILON)*100)/100, r4=x=>Math.round((+x+Number.EPSILON)*1e4)/1e4;
 const uid=()=>"p_"+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
 const agentIds=()=>[...Object.keys(SOURCES).filter(i=>i!=="kalshi"),"consensus"];
