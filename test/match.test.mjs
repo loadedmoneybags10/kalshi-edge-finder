@@ -15,14 +15,15 @@ test("dollarsBlock parses *_dollars strings and *_fp volume", () => {
   assert.equal(b.ask, 0.45); assert.equal(b.bid, 0.42); assert.equal(b.last, 0.45); assert.equal(b.volume, 14.2);
 });
 
-test("matchGameTwoSided pairs the two team markets and reads both real prices", () => {
-  const g = { away_team: "Miami Marlins", home_team: "Arizona Diamondbacks", commence_time: "2026-09-19T01:40:00Z" };
+test("matchGameTwoSided pairs the two team markets by ticker-date and reads both real prices", () => {
+  // Game date lives in the ticker (26SEP15), NOT close_time (padded to Sep 19).
+  const g = { away_team: "Miami Marlins", home_team: "Arizona Diamondbacks", commence_time: "2026-09-15T21:40:00Z" };
   const markets = [
     { ticker: "KXMLBGAME-26SEP152140MIAAZ-MIA", event_ticker: "KXMLBGAME-26SEP152140MIAAZ",
       title: "Miami wins", yes_sub_title: "Miami", yes_ask_dollars: "0.4500", yes_bid_dollars: "0.4200", last_price_dollars: "0.4500", volume_fp: "14.20", close_time: "2026-09-19T01:40:00Z" },
     { ticker: "KXMLBGAME-26SEP152140MIAAZ-AZ", event_ticker: "KXMLBGAME-26SEP152140MIAAZ",
       title: "Arizona wins", yes_sub_title: "Arizona", yes_ask_dollars: "0.5900", yes_bid_dollars: "0.5400", last_price_dollars: "0.5400", volume_fp: "3.00", close_time: "2026-09-19T01:40:00Z" },
-    // an unrelated game's markets that must NOT match
+    // an unrelated game that must NOT match
     { ticker: "KXMLBGAME-26SEP152138SEALAA-SEA", event_ticker: "KXMLBGAME-26SEP152138SEALAA",
       title: "Seattle wins", yes_sub_title: "Seattle", yes_ask_dollars: "0.5400", close_time: "2026-09-19T01:38:00Z" },
   ];
@@ -30,17 +31,30 @@ test("matchGameTwoSided pairs the two team markets and reads both real prices", 
   assert.ok(r, "should match");
   assert.equal(r.away.ask, 0.45); // Miami (away)
   assert.equal(r.home.ask, 0.59); // Arizona (home)
+  assert.equal(r.dayGap, 0);
 });
 
-test("matchGameTwoSided returns null when a side is missing or out of the date window", () => {
-  const g = { away_team: "Miami Marlins", home_team: "Arizona Diamondbacks", commence_time: "2026-09-19T01:40:00Z" };
-  const onlyOne = [{ event_ticker: "E1", yes_sub_title: "Miami", yes_ask_dollars: "0.45", close_time: "2026-09-19T01:40:00Z" }];
+test("matchGameTwoSided prefers the closest game date across a series", () => {
+  const g = { away_team: "Colorado Rockies", home_team: "Detroit Tigers", commence_time: "2026-09-15T23:10:00Z" };
+  const mk = (date, team, ask) => ({ ticker: `KXMLBGAME-${date}COLDET-${team}`, event_ticker: `KXMLBGAME-${date}COLDET`, yes_sub_title: team === "COL" ? "Colorado" : "Detroit", yes_ask_dollars: ask });
+  const markets = [ // same matchup on three series days; Sep 15 is the right one
+    mk("26SEP13", "COL", "0.40"), mk("26SEP13", "DET", "0.64"),
+    mk("26SEP15", "COL", "0.44"), mk("26SEP15", "DET", "0.60"),
+    mk("26SEP17", "COL", "0.42"), mk("26SEP17", "DET", "0.62"),
+  ];
+  const r = matchGameTwoSided(g, markets);
+  assert.ok(r); assert.equal(r.away.ask, 0.44); assert.equal(r.dayGap, 0); // picked Sep 15
+});
+
+test("matchGameTwoSided returns null when a side is missing or too far in date", () => {
+  const g = { away_team: "Miami Marlins", home_team: "Arizona Diamondbacks", commence_time: "2026-09-15T21:40:00Z" };
+  const onlyOne = [{ ticker: "KXMLBGAME-26SEP15X-MIA", event_ticker: "E1", yes_sub_title: "Miami", yes_ask_dollars: "0.45" }];
   assert.equal(matchGameTwoSided(g, onlyOne), null);
   const wrongDate = [
-    { event_ticker: "E2", yes_sub_title: "Miami", yes_ask_dollars: "0.45", close_time: "2026-10-01T00:00:00Z" },
-    { event_ticker: "E2", yes_sub_title: "Arizona", yes_ask_dollars: "0.59", close_time: "2026-10-01T00:00:00Z" },
+    { ticker: "KXMLBGAME-26OCT01X-MIA", event_ticker: "E2", yes_sub_title: "Miami", yes_ask_dollars: "0.45" },
+    { ticker: "KXMLBGAME-26OCT01X-AZ", event_ticker: "E2", yes_sub_title: "Arizona", yes_ask_dollars: "0.59" },
   ];
-  assert.equal(matchGameTwoSided(g, wrongDate), null);
+  assert.equal(matchGameTwoSided(g, wrongDate), null); // Oct 1 vs Sep 15 → gap ≫ 1 day
 });
 
 const game = {

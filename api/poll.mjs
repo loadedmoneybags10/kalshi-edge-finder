@@ -147,7 +147,7 @@ function buildLiveCard(comp, events, gameMarkets) {
   const fights = [];
   let matched = 0;
   for (const e of events || []) {
-    const g = matchGameTwoSided(e, gameMarkets || [], { dateWindowMs: 36 * 3600 * 1000 });
+    const g = matchGameTwoSided(e, gameMarkets || []);
     if (!g || !(g.away.ask > 0) || !(g.home.ask > 0)) continue; // need a real price on both sides
     matched++;
     const away = e.away_team, home = e.home_team;

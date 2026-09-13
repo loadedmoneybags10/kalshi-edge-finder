@@ -14,7 +14,7 @@
 if (!process.env.FEED) process.env.FEED = "live";
 
 import { fetchBookOdds, fetchKalshiGameMarkets } from "../lib/providers.mjs";
-import { matchGameTwoSided, nameScore } from "../lib/match.mjs";
+import { matchGameTwoSided, nameScore, tickerGameDate } from "../lib/match.mjs";
 import { booksBlock } from "../lib/normalize.mjs";
 import { analyzeCard, confirmCard } from "../lib/engine.mjs";
 import { COMPETITIONS } from "../lib/competitions.mjs";
@@ -48,7 +48,7 @@ for (const comp of ["mlb", "nfl"]) {
 
   let shown = 0;
   for (const e of events) {
-    const g = matchGameTwoSided(e, gameMarkets, { dateWindowMs: 36 * 3600 * 1000 });
+    const g = matchGameTwoSided(e, gameMarkets);
     if (!g) continue;
     const f = liveFight(comp, e, g);
     const mk = f.markets[0];
@@ -69,13 +69,16 @@ for (const comp of ["mlb", "nfl"]) {
     const e0 = events[0];
     if (e0) {
       console.log(`   first Odds game: ${e0.away_team} @ ${e0.home_team}  commence ${e0.commence_time}`);
-      console.log(`   first 10 Kalshi markets in ${series} (sub_title | close_time | awayScore/homeScore | Δhours):`);
-      const gt = Date.parse(e0.commence_time);
+      console.log(`   first 10 Kalshi markets in ${series} (sub_title | ticker-date | a/h score):`);
       for (const m of gameMarkets.slice(0, 10)) {
         const txt = m.yes_sub_title || m.title || "";
-        const dt = m.close_time ? Math.round((Date.parse(m.close_time) - gt) / 3600000) : "n/a";
-        console.log(`     "${txt}"  | ${m.close_time} | ${nameScore(e0.away_team, txt)}/${nameScore(e0.home_team, txt)} | Δ${dt}h`);
+        const td = tickerGameDate(m.ticker);
+        console.log(`     "${txt}"  | ${Number.isFinite(td) ? new Date(td).toISOString().slice(0, 10) : "?"} | ${nameScore(e0.away_team, txt)}/${nameScore(e0.home_team, txt)}`);
       }
+      const kDates = [...new Set(gameMarkets.map(m => { const d = tickerGameDate(m.ticker); return Number.isFinite(d) ? new Date(d).toISOString().slice(0, 10) : null; }).filter(Boolean))].sort();
+      const oDates = [...new Set(events.map(e => (e.commence_time || "").slice(0, 10)).filter(Boolean))].sort();
+      console.log(`   Kalshi game dates: ${kDates.join(", ")}`);
+      console.log(`   Odds game dates  : ${oDates.join(", ")}`);
       // Also: does ANY Kalshi market name-match either side, ignoring date?
       const aHit = gameMarkets.filter(m => nameScore(e0.away_team, m.yes_sub_title || m.title || "") >= 1).length;
       const hHit = gameMarkets.filter(m => nameScore(e0.home_team, m.yes_sub_title || m.title || "") >= 1).length;
