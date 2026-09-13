@@ -48,10 +48,22 @@ for (const comp of ["mlb", "nfl"]) {
   console.log(`\n===== ${comp}: ${events.length} games from Odds API =====`);
   if (events[0]) console.log("First game raw bookmaker keys:", (events[0].bookmakers || []).map(b => b.key).join(", ") || "(none)");
 
-  let shown = 0;
+  let shown = 0, dumped = false;
   for (const e of events) {
     const ml = matchMoneyline(e, kMarkets, { dateWindowMs: 36 * 3600 * 1000 });
     if (!ml) continue;
+    if (!dumped) {                    // one raw Kalshi market dump per sport
+      const m = ml.market;
+      console.log(`\n   RAW matched Kalshi market for "${e.away_team} @ ${e.home_team}":`);
+      console.log("     ticker:", m.ticker, "| title:", m.title, "| yes_sub_title:", m.yes_sub_title);
+      console.log("     price-ish fields:", JSON.stringify({
+        yes_bid: m.yes_bid, yes_ask: m.yes_ask, no_bid: m.no_bid, no_ask: m.no_ask,
+        last_price: m.last_price, volume: m.volume, volume_24h: m.volume_24h,
+        open_interest: m.open_interest, liquidity: m.liquidity, status: m.status, close_time: m.close_time,
+      }));
+      console.log("     ALL keys:", Object.keys(m).join(", "));
+      dumped = true;
+    }
     const f = liveFight(comp, e, ml);
     const mk = f.markets[0];
     console.log(`\n• ${f.name}  (${e.commence_time})`);
