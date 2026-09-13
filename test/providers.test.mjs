@@ -12,10 +12,10 @@ test("fetchActiveSports returns null in mock (→ scan all leagues)", async () =
   assert.equal(await fetchActiveSports(), null);
 });
 
-test("oddsConfig reports credits-per-call = #markets", () => {
+test("oddsConfig reports credits-per-call = #markets × #regions", () => {
   const c = oddsConfig();
-  assert.equal(c.creditsPerCall, c.markets.split(",").length);
-  assert.equal(c.regions, "us");
+  assert.equal(c.creditsPerCall, c.markets.split(",").length * c.regions.split(",").length);
+  assert.ok(c.regions.split(",").includes("eu"), "eu region included for Pinnacle");
 });
 
 test("oddsCredits starts empty until a real call sets it", () => {
