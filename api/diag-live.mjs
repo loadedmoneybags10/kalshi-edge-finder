@@ -14,7 +14,7 @@
 if (!process.env.FEED) process.env.FEED = "live";
 
 import { fetchBookOdds, fetchKalshiGameMarkets } from "../lib/providers.mjs";
-import { matchGameTwoSided } from "../lib/match.mjs";
+import { matchGameTwoSided, nameScore } from "../lib/match.mjs";
 import { booksBlock } from "../lib/normalize.mjs";
 import { analyzeCard, confirmCard } from "../lib/engine.mjs";
 import { COMPETITIONS } from "../lib/competitions.mjs";
@@ -64,6 +64,24 @@ for (const comp of ["mlb", "nfl"]) {
     if (!candidates.length) console.log("     -> no decision formed");
     if (++shown >= 4) break;
   }
-  if (!shown) console.log("   (no games matched the Kalshi game series)");
+  if (!shown) {
+    console.log("   (no games matched the Kalshi game series) — WHY-NOT DUMP:");
+    const e0 = events[0];
+    if (e0) {
+      console.log(`   first Odds game: ${e0.away_team} @ ${e0.home_team}  commence ${e0.commence_time}`);
+      console.log(`   first 10 Kalshi markets in ${series} (sub_title | close_time | awayScore/homeScore | Δhours):`);
+      const gt = Date.parse(e0.commence_time);
+      for (const m of gameMarkets.slice(0, 10)) {
+        const txt = m.yes_sub_title || m.title || "";
+        const dt = m.close_time ? Math.round((Date.parse(m.close_time) - gt) / 3600000) : "n/a";
+        console.log(`     "${txt}"  | ${m.close_time} | ${nameScore(e0.away_team, txt)}/${nameScore(e0.home_team, txt)} | Δ${dt}h`);
+      }
+      // Also: does ANY Kalshi market name-match either side, ignoring date?
+      const aHit = gameMarkets.filter(m => nameScore(e0.away_team, m.yes_sub_title || m.title || "") >= 1).length;
+      const hHit = gameMarkets.filter(m => nameScore(e0.home_team, m.yes_sub_title || m.title || "") >= 1).length;
+      console.log(`   name-only matches across series: away "${e0.away_team}"→${aHit}, home "${e0.home_team}"→${hHit}`);
+      console.log(`   distinct Kalshi sub_titles: ${[...new Set(gameMarkets.map(m => m.yes_sub_title))].slice(0, 24).join(", ")}`);
+    }
+  }
 }
 console.log("\n=== end ===");
