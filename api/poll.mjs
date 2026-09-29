@@ -12,7 +12,7 @@
 //           GET /api/poll?sport=mlb           (one bucket)
 // ============================================================================
 
-import { fetchBookOdds, fetchKalshiMarkets, feedMode, fetchActiveSports, fetchKalshiGameMarkets, oddsCredits, oddsConfig } from "../lib/providers.mjs";
+import { fetchBookOdds, fetchKalshiMarkets, feedMode, fetchActiveSports, fetchUpcomingEvents, fetchKalshiGameMarkets, oddsCredits, oddsConfig } from "../lib/providers.mjs";
 import { buildMlbFixture, buildSoccerFixture, buildUfcFixture, twoWayKalshi, booksBlock } from "../lib/normalize.mjs";
 import { buildSimCard } from "../lib/simkalshi.mjs";
 import { matchGameTwoSided } from "../lib/match.mjs";
@@ -126,6 +126,13 @@ const card = (sport, label, fights) => ({
 // Odds cache lives in state so the cron's close+poll (and repeat polls within a
 // day) share ONE paid fetch per competition. TTL configurable via ODDS_TTL_MIN.
 const ODDS_TTL_MS = (+(process.env.ODDS_TTL_MIN ?? 360)) * 60000;
+// Is this comp's odds already cached and fresh? Used to skip the free schedule
+// pre-gate when we would reuse cached odds anyway (the daily run clears the cache
+// at the start, so the first pass still gates).
+function isOddsCached(state, comp) {
+  const c = state.oddsCache?.[comp.key];
+  return !!(c && Date.now() - new Date(c.at).getTime() < ODDS_TTL_MS);
+}
 async function getOddsCached(state, comp) {
   state.oddsCache = state.oddsCache || {};
   const c = state.oddsCache[comp.key];
@@ -180,10 +187,29 @@ function withinWindow(events) {
   });
 }
 
+// FREE schedule pre-gate: does this comp have a game inside the trade window?
+// Uses the 0-credit /events endpoint so we never spend odds credits on a sport
+// whose next game is days away. null (mock / no key / error) → proceed (can't
+// gate, so don't skip a real fetch). A cached comp is not re-gated — if we already
+// paid for its odds this run, reuse them.
+async function hasGameInWindow(comp) {
+  const evs = await fetchUpcomingEvents(comp.key);
+  if (evs == null) return true;
+  const now = Date.now();
+  const lo = now + TIMING.minHoursToStart * 3600e3, hi = now + TIMING.maxHoursToStart * 3600e3;
+  return evs.some(e => { const t = Date.parse(e.commence_time); return Number.isFinite(t) && t >= lo && t <= hi; });
+}
+
+// A comp with no game in the window: empty card, no paid fetch. `noGames` lets the
+// poller tally what the free pre-gate saved.
+const skipCard = comp => ({ sport: comp.sport, league: comp.league, key: comp.key, fights: [], paidFetch: false, windowSkipped: 0, noGames: true });
+
 // Build the right card for a competition by its engine bucket + feed mode.
 export async function buildCardFor(comp, state = {}) {
   const mode = feedMode();
   if (mode === "live") {                          // REAL odds + REAL Kalshi prices
+    const cachedHit = isOddsCached(state, comp);
+    if (!cachedHit && !(await hasGameInWindow(comp))) return skipCard(comp);
     const { events, cached } = await getOddsCached(state, comp);
     const kept = withinWindow(events);
     const gameMarkets = await fetchKalshiGameMarkets(comp.key); // this comp's KX<SPORT>GAME series
@@ -191,6 +217,8 @@ export async function buildCardFor(comp, state = {}) {
     c.paidFetch = !cached; c.windowSkipped = (events?.length || 0) - kept.length; return c;
   }
   if (mode === "sim") {                            // REAL odds + SIMULATED Kalshi
+    const cachedHit = isOddsCached(state, comp);
+    if (!cachedHit && !(await hasGameInWindow(comp))) return skipCard(comp);
     const { events, cached } = await getOddsCached(state, comp);
     const kept = withinWindow(events);
     const c = buildSimCard(comp, kept);
@@ -216,7 +244,7 @@ export async function runPoll(scope = "all") {
   state.fixtures = state.fixtures || {};
   const now = Date.now();
   const placed = [], consensusCandidates = [], scanned = [];
-  let games = 0, noTrade = 0, paidFetches = 0, windowSkipped = 0;
+  let games = 0, noTrade = 0, paidFetches = 0, windowSkipped = 0, noGamesSkipped = 0;
 
   const plog = process.env.POLL_QUIET ? () => {} : m => process.stderr.write(`   ${m}\n`);
 
@@ -235,7 +263,7 @@ export async function runPoll(scope = "all") {
   for (const comp of comps) {
     let c;
     plog(`• ${comp.key}: fetching odds + Kalshi ${comp.kalshiSeries || "(no series)"} + analyzing…`);
-    try { c = await buildCardFor(comp, state); if (c.paidFetch) paidFetches++; windowSkipped += c.windowSkipped || 0; }
+    try { c = await buildCardFor(comp, state); if (c.paidFetch) paidFetches++; if (c.noGames) noGamesSkipped++; windowSkipped += c.windowSkipped || 0; }
     catch (e) { plog(`  ${comp.key}: error — ${String(e?.message || e)}`); scanned.push({ comp: comp.key, error: String(e?.message || e) }); continue; }
     if (c.kalshiScanned != null) { kalshiScanned += c.kalshiScanned; kalshiMatched += c.kalshiMatched; kalshiOpen += c.kalshiOpen || 0; }
     if (feedMode() === "live" && c.kalshiMatched != null) plog(`  ${comp.key}: matched ${c.kalshiMatched}/${c.kalshiScanned} games to Kalshi (${c.kalshiOpen || 0} series markets)`);
@@ -273,7 +301,7 @@ export async function runPoll(scope = "all") {
     scanned, games, newConsensusPlays: placed, noTrade, stats: accountStats(state),
     window: { minHours: TIMING.minHoursToStart, maxHours: TIMING.maxHoursToStart, skipped: windowSkipped },
     credits: {
-      leaguesScanned: comps.length, skippedOffSeason, paidFetches,
+      leaguesScanned: comps.length, skippedOffSeason, skippedNoGamesInWindow: noGamesSkipped, paidFetches,
       creditsPerCall: oddsConfig().creditsPerCall,
       estCreditsThisRun: paidFetches * oddsConfig().creditsPerCall,
       remaining: credits.remaining, used: credits.used, markets: oddsConfig().markets,

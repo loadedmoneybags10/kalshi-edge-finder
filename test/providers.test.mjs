@@ -1,7 +1,7 @@
 // Credit-saver helper tests (default env = mock, so no network is touched).
 import test from "node:test";
 import assert from "node:assert/strict";
-import { fetchActiveSports, oddsConfig, oddsCredits, feedMode } from "../lib/providers.mjs";
+import { fetchActiveSports, fetchUpcomingEvents, oddsConfig, oddsCredits, feedMode } from "../lib/providers.mjs";
 import { pickComps } from "../api/poll.mjs";
 
 test("default feed mode is mock (no keys required)", () => {
@@ -16,6 +16,17 @@ test("oddsConfig reports credits-per-call = #markets × #regions", () => {
   const c = oddsConfig();
   assert.equal(c.creditsPerCall, c.markets.split(",").length * c.regions.split(",").length);
   assert.ok(c.regions.split(",").includes("eu"), "eu region included for Pinnacle");
+});
+
+test("default markets is moneyline-only (h2h) — 1 market, minimal credit burn", () => {
+  if (process.env.ODDS_MARKETS) return; // only assert the shipped default
+  assert.equal(oddsConfig().markets, "h2h");
+});
+
+test("fetchUpcomingEvents returns null without a key (cannot gate → proceed with fetch)", async () => {
+  const saved = process.env.ODDS_API_KEY; delete process.env.ODDS_API_KEY;
+  try { assert.equal(await fetchUpcomingEvents("mlb"), null); }
+  finally { if (saved !== undefined) process.env.ODDS_API_KEY = saved; }
 });
 
 test("oddsCredits starts empty until a real call sets it", () => {
