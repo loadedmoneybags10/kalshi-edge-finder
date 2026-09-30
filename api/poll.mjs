@@ -12,12 +12,12 @@
 //           GET /api/poll?sport=mlb           (one bucket)
 // ============================================================================
 
-import { fetchBookOdds, fetchKalshiMarkets, feedMode, fetchActiveSports, fetchUpcomingEvents, fetchKalshiGameMarkets, oddsCredits, oddsConfig } from "../lib/providers.mjs";
+import { fetchBookOdds, fetchKalshiMarkets, feedMode, fetchActiveSports, fetchUpcomingEvents, fetchKalshiGameMarkets, oddsCredits, oddsConfig, ensureCreditBudget, creditBudget } from "../lib/providers.mjs";
 import { buildMlbFixture, buildSoccerFixture, buildUfcFixture, twoWayKalshi, booksBlock } from "../lib/normalize.mjs";
 import { buildSimCard } from "../lib/simkalshi.mjs";
 import { matchGameTwoSided } from "../lib/match.mjs";
 import { enabledCompetitions, COMPETITIONS } from "../lib/competitions.mjs";
-import { TIMING } from "../lib/config.mjs";
+import { TIMING, CREDITS } from "../lib/config.mjs";
 import {
   analyzeCard, confirmCard, tryPlace, recordCandidates, recordPriceHistory,
   snapshotBankroll, accountStats,
@@ -240,11 +240,12 @@ export function pickComps(scope) {
 
 // Load state → scan competitions → score → place confirmed bets → persist.
 export async function runPoll(scope = "all") {
+  ensureCreditBudget(CREDITS.maxPerRun); // guard standalone polls; no-op inside a daily run
   const state = await loadState();
   state.fixtures = state.fixtures || {};
   const now = Date.now();
   const placed = [], consensusCandidates = [], scanned = [];
-  let games = 0, noTrade = 0, paidFetches = 0, windowSkipped = 0, noGamesSkipped = 0;
+  let games = 0, noTrade = 0, paidFetches = 0, windowSkipped = 0, noGamesSkipped = 0, budgetHit = false;
 
   const plog = process.env.POLL_QUIET ? () => {} : m => process.stderr.write(`   ${m}\n`);
 
@@ -264,7 +265,10 @@ export async function runPoll(scope = "all") {
     let c;
     plog(`• ${comp.key}: fetching odds + Kalshi ${comp.kalshiSeries || "(no series)"} + analyzing…`);
     try { c = await buildCardFor(comp, state); if (c.paidFetch) paidFetches++; if (c.noGames) noGamesSkipped++; windowSkipped += c.windowSkipped || 0; }
-    catch (e) { plog(`  ${comp.key}: error — ${String(e?.message || e)}`); scanned.push({ comp: comp.key, error: String(e?.message || e) }); continue; }
+    catch (e) {
+      if (e?.code === "CREDIT_BUDGET") { budgetHit = true; plog(`  ⛔ credit budget reached — ${String(e.message)}. Stopping scan (${comps.length - comps.indexOf(comp)} league(s) not fetched).`); break; }
+      plog(`  ${comp.key}: error — ${String(e?.message || e)}`); scanned.push({ comp: comp.key, error: String(e?.message || e) }); continue;
+    }
     if (c.kalshiScanned != null) { kalshiScanned += c.kalshiScanned; kalshiMatched += c.kalshiMatched; kalshiOpen += c.kalshiOpen || 0; }
     if (feedMode() === "live" && c.kalshiMatched != null) plog(`  ${comp.key}: matched ${c.kalshiMatched}/${c.kalshiScanned} games to Kalshi (${c.kalshiOpen || 0} series markets)`);
     if (!c || !c.fights.length) { scanned.push({ comp: comp.key, games: 0 }); continue; }
@@ -305,6 +309,7 @@ export async function runPoll(scope = "all") {
       creditsPerCall: oddsConfig().creditsPerCall,
       estCreditsThisRun: paidFetches * oddsConfig().creditsPerCall,
       remaining: credits.remaining, used: credits.used, markets: oddsConfig().markets,
+      budget: creditBudget(), budgetHit,
     } };
 }
 

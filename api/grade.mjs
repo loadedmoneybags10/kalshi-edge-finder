@@ -10,7 +10,8 @@
 //   Cron:   GET /api/grade                 (daily; see vercel.json)
 // ============================================================================
 
-import { fetchScores } from "../lib/providers.mjs";
+import { fetchScores, ensureCreditBudget } from "../lib/providers.mjs";
+import { CREDITS } from "../lib/config.mjs";
 import { resultFromScore, soccerResultFromScore, ufcResultFromScore, nflResultFromScore } from "../lib/normalize.mjs";
 import { applyResult, accountStats, snapshotBankroll, pushReport, logAuto } from "../lib/engine.mjs";
 import { loadState, saveState, storeKind } from "../lib/store.mjs";
@@ -31,6 +32,7 @@ function matchFixture(state, sport, ev) {
 }
 
 export async function runGrade(scope = "all") {
+  ensureCreditBudget(CREDITS.maxPerRun); // guard standalone grade; no-op inside a daily run
   const state = await loadState();
   const before = accountStats(state);
   const graded = [];
@@ -41,7 +43,8 @@ export async function runGrade(scope = "all") {
   const comps = pickComps(scope).filter(c => openLeagues.has(c.key) || openLeagues.has(c.sport));
   for (const comp of comps) {
     let scores;
-    try { scores = await fetchScores(comp.key); } catch { continue; }
+    try { scores = await fetchScores(comp.key); }
+    catch (e) { if (e?.code === "CREDIT_BUDGET") break; continue; }
     const mapper = RESULT_OF[comp.sport];
     if (!mapper) continue;
     for (const ev of scores) {

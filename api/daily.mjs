@@ -26,12 +26,17 @@ import { runPoll } from "./poll.mjs";
 import { runClose } from "./close.mjs";
 import { runGrade } from "./grade.mjs";
 import { loadState, saveState } from "../lib/store.mjs";
-import { feedMode } from "../lib/providers.mjs";
+import { feedMode, resetCreditBudget, creditBudget } from "../lib/providers.mjs";
+import { CREDITS } from "../lib/config.mjs";
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 
 const step = m => process.stderr.write(`\n▶ ${m}…\n`);
 
 export async function runDaily() {
+  // Hard guard: one credit budget spans this whole run (grade + close + poll).
+  resetCreditBudget(CREDITS.maxPerRun);
+  step(`Credit budget for this run: ${CREDITS.maxPerRun > 0 ? CREDITS.maxPerRun + " credit(s) max" : "unlimited"}`);
+
   // Credit-saver: start each run with a clean odds cache. The first paid odds
   // fetch of the run (in Close) is then reused by Poll seconds later (the cache
   // lives in saved state), so we pay ONCE per active sport per run — but the next
@@ -81,8 +86,11 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   out.poll.newConsensusPlays.forEach(p => console.log("     + " + p));
   console.log(`   Bankroll $${s.bankroll} · ROI ${s.roi}% · record ${s.wins}-${s.losses} · CLV ${s.clv ?? "—"} pts`);
   // Credit accounting: what we paid for, and what the free gates saved us.
-  console.log(`   Credits: markets [${c.markets}] = ${c.creditsPerCall}/call · ${c.paidFetches} paid fetch(es) ≈ ${c.estCreditsThisRun} credit(s) this run`);
+  const spent = c.budget?.spent ?? c.estCreditsThisRun;
+  const cap = c.budget?.cap;
+  console.log(`   Credits: markets [${c.markets}] = ${c.creditsPerCall}/call · spent ${spent} of ${cap != null ? cap : "∞"} budgeted this run`);
   console.log(`     saved by free gates: ${c.skippedOffSeason || 0} off-season + ${c.skippedNoGamesInWindow || 0} no-game-in-window league(s) (0 credits)`);
+  if (c.budgetHit) console.log(`   ⛔ CREDIT BUDGET REACHED — the run stopped early to protect your balance. Raise MAX_CREDITS_PER_RUN if this was legitimate.`);
   if (c.remaining != null) console.log(`   Odds credits remaining this month: ${c.remaining}`);
   console.log(`\n   📈 Open  edge/dashboard-local.html  to view the journal (accumulates every run).`);
   console.log(`   📤 To update the hosted artifact: push edge/journal-export.json (or paste it to Claude).\n`);

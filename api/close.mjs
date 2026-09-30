@@ -11,10 +11,12 @@
 // ============================================================================
 
 import { buildCardFor, pickComps } from "./poll.mjs";
-import { fetchActiveSports } from "../lib/providers.mjs";
+import { fetchActiveSports, ensureCreditBudget } from "../lib/providers.mjs";
+import { CREDITS } from "../lib/config.mjs";
 import { loadState, saveState, storeKind } from "../lib/store.mjs";
 
 export async function runClose({ force = false, scope = "all" } = {}) {
+  ensureCreditBudget(CREDITS.maxPerRun); // guard standalone close; no-op inside a daily run
   const state = await loadState();
   const now = Date.now();
   let snapped = 0;
@@ -24,7 +26,8 @@ export async function runClose({ force = false, scope = "all" } = {}) {
   const comps = pickComps(scope).filter(c => !active || active.has(c.oddsSport));
   for (const comp of comps) {
     let card;
-    try { card = await buildCardFor(comp, state); } catch { continue; }
+    try { card = await buildCardFor(comp, state); }
+    catch (e) { if (e?.code === "CREDIT_BUDGET") break; continue; }
     for (const f of card.fights || []) {
       const started = force || (f.commenceTime && new Date(f.commenceTime).getTime() <= now);
       if (!started) continue;
