@@ -288,7 +288,7 @@ export async function runPoll(scope = "all") {
     for (const d of all.filter(x => x.decision === "TRADE")) {
       const r = tryPlace(state, { ...d });
       if (r.status === "placed" && r.pos.agentId === "consensus")
-        placed.push(`${r.pos.sport.toUpperCase()} · ${r.pos.fixtureName} — ${r.pos.sideName} @ ${(r.pos.price * 100).toFixed(0)}¢ ($${r.pos.stake})`);
+        placed.push(`${(r.pos.league || r.pos.sport).toUpperCase()} · ${r.pos.fixtureName} — ${r.pos.sideName} @ ${(r.pos.price * 100).toFixed(0)}¢ ($${r.pos.stake})`);
     }
     noTrade += candidates.filter(d => d.decision === "NO_TRADE").length;
     recordPriceHistory(state, an, now);
